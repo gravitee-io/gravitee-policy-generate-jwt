@@ -1,0 +1,109 @@
+{
+  "type" : "object",
+  "id" : "urn:jsonschema:io:gravitee:policy:generatejwt:configuration:GenerateJwtPolicyConfiguration",
+  "properties" : {
+    "signature": {
+      "title": "Signature",
+      "description": "Define how the JSON Web Token must be signed.",
+      "type" : "string",
+      "default": "RSA_RS256",
+      "enum" : [
+        "RSA_RS256",
+        "HMAC_HS256"
+      ],
+      "x-schema-form": {
+        "type": "select",
+        "titleMap": {
+          "RSA_RS256": "RS256 - RSA signature with SHA-256",
+          "HMAC_HS256": "HS256 - HMAC with SHA-256, requires 256+ bit secret"
+        }
+      }
+    },
+    "kid" : {
+      "type" : "string",
+      "title": "Key ID",
+      "description": "Specifies the key ID (kid) to include in the JWT header"
+    },
+    "id" : {
+      "type" : "string",
+      "title": "JWT ID",
+      "description": "JWT ID (jti) claim is a unique identifier for the JWT. Defaults to UUID."
+    },
+    "audiences" : {
+      "type" : "array",
+      "title": "Audiences",
+      "description": "Claim identifies the recipients that the JWT is intended for",
+      "items" : {
+        "type" : "string"
+      }
+    },
+    "issuer" : {
+      "type" : "string",
+      "title": "Issuer",
+      "description": "Claim that identifies the issuer of the JWT",
+      "default": "urn://gravitee-api-gw"
+    },
+    "expiresIn" : {
+      "type" : "integer",
+      "title": "Expires in",
+      "description": "Lifespan of the JWT",
+      "default": 30
+    },
+    "expiresInUnit" : {
+      "type" : "string",
+      "title": "Expires in unit",
+      "description": "Lifespan of the JWT in seconds, minutes, hours, or days.",
+      "enum" : [ "SECONDS", "MINUTES", "HOURS", "DAYS" ],
+      "default": "SECONDS"
+    },
+    "subject" : {
+      "type" : "string",
+      "title": "Subject",
+      "description": "Claim identifies or makes a statement about the subject of the JWT"
+    },
+    "content" : {
+      "type" : "string",
+      "title": "Private key / Secret key",
+      "description": "Specifies a PEM-encoded private key used to sign the JWT or the secret key used to sign tokens with an HMAC algorithm",
+      "x-schema-form": {
+        "type": "codemirror",
+        "codemirrorOptions": {
+          "placeholder": "Put PEM-encoded private key or the secret key",
+          "lineWrapping": true,
+          "lineNumbers": true,
+          "allowDropFileTypes": true
+        }
+      }
+    },
+    "customClaims" : {
+      "type" : "array",
+      "title": "Custom claims",
+      "description": "Specify additional claim name/value pair(s) in the payload of the JWT",
+      "items" : {
+        "type" : "object",
+        "title": "Claim",
+        "id" : "urn:jsonschema:io:gravitee:policy:generatejwt:model:Claim",
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "title": "Name",
+            "description": "Name of the claim"
+          },
+          "value" : {
+            "type" : "string",
+            "title": "Value",
+            "description": "Value of the claim"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ]
+      }
+    }
+  },
+  "required": [
+    "signature",
+    "content"
+  ]
+}
