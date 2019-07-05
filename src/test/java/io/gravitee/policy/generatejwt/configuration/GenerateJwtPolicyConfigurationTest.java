@@ -38,6 +38,7 @@ public class GenerateJwtPolicyConfigurationTest {
         Assert.assertEquals(TimeUnit.SECONDS, configuration.getExpiresInUnit());
         Assert.assertEquals("urn://gravitee-api-gw", configuration.getIssuer());
         Assert.assertNull(configuration.getCustomClaims());
+        Assert.assertEquals(KeyResolver.INLINE, configuration.getKeyResolver());
     }
 
     @Test
@@ -52,6 +53,7 @@ public class GenerateJwtPolicyConfigurationTest {
         Assert.assertEquals(TimeUnit.SECONDS, configuration.getExpiresInUnit());
         Assert.assertEquals("my-custom-issuer", configuration.getIssuer());
         Assert.assertNull(configuration.getCustomClaims());
+        Assert.assertEquals(KeyResolver.INLINE, configuration.getKeyResolver());
     }
 
     private <T> T load(String resource, Class<T> type) throws IOException {

@@ -29,6 +29,7 @@ import io.gravitee.policy.api.PolicyChain;
 import io.gravitee.policy.api.PolicyResult;
 import io.gravitee.policy.generatejwt.alg.Signature;
 import io.gravitee.policy.generatejwt.configuration.GenerateJwtPolicyConfiguration;
+import io.gravitee.policy.generatejwt.configuration.KeyResolver;
 import io.gravitee.policy.generatejwt.model.Claim;
 import io.gravitee.reporter.api.http.Metrics;
 import org.junit.Before;
@@ -41,13 +42,21 @@ import org.mockito.stubbing.Answer;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
+import java.security.KeyStore;
+import java.security.PrivateKey;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 
+import static java.security.KeyStore.getInstance;
 import static org.mockito.Mockito.*;
 
 /**
+ *
+ * graviteeio.jks and graviteeio.p12 has been generated using the following commands:
+ *
+ * > keytool -genkey -alias graviteeio -keyalg RSA -keysize 512 -validity 1825 -keystore "graviteeio.jks" -storetype JKS -dname "CN=www.gravitee.io,OU=Gravitee,O=Gravitee" -keypass graviteeio.my.keypass -storepass graviteeio.my.storepass
+ * > keytool -genkey -alias graviteeio -keyalg RSA -keysize 512 -validity 1825 -keystore "graviteeio.p12" -storetype PKCS12 -dname "CN=www.gravitee.io,OU=Gravitee,O=Gravitee" -storepass graviteeio.my.storepass
  *
  * @author David BRASSELY (david.brassely at graviteesource.com)
  * @author GraviteeSource Team
@@ -77,6 +86,7 @@ public class GenerateJwtPolicyTest {
         MockitoAnnotations.initMocks(this);
         when(request.metrics()).thenReturn(Metrics.on(System.currentTimeMillis()).build());
         when(executionContext.getTemplateEngine()).thenReturn(templateEngine);
+        when(configuration.getKeyResolver()).thenReturn(KeyResolver.INLINE);
 
         when(templateEngine.convert(anyString())).thenAnswer(
                 (Answer<String>) invocationOnMock -> invocationOnMock.getArgument(0));
@@ -119,7 +129,7 @@ public class GenerateJwtPolicyTest {
 
     @Test
     public void shouldSuccess_rs256_withEmptyKid() throws Exception {
-        when(configuration.getContent()).thenReturn(loadPEMCertificate("/priv.pem"));
+        when(configuration.getContent()).thenReturn(loadResource("/priv.pem"));
 
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
@@ -168,7 +178,7 @@ public class GenerateJwtPolicyTest {
     @Test
     public void shouldSuccess_rs256_withKid() throws Exception {
         when(configuration.getKid()).thenReturn("my-kid");
-        when(configuration.getContent()).thenReturn(loadPEMCertificate("/priv.pem"));
+        when(configuration.getContent()).thenReturn(loadResource("/priv.pem"));
 
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
@@ -185,6 +195,137 @@ public class GenerateJwtPolicyTest {
                         return false;
                     }
                 }));
+    }
+
+    @Test
+    public void shouldSuccess_rs256_pemResolver() throws Exception {
+        when(configuration.getKeyResolver()).thenReturn(KeyResolver.PEM);
+        when(configuration.getKid()).thenReturn("my-kid");
+        when(configuration.getContent()).thenReturn(GenerateJwtPolicy.class.getResource("/priv.pem").getPath());
+
+        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
+
+        verify(policyChain, times(1)).doNext(request, response);
+        verify(executionContext, times(1)).setAttribute(
+                eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), argThat((ArgumentMatcher<String>) jwt -> {
+                    try {
+                        SignedJWT signedJWT = SignedJWT.parse(jwt);
+                        JWSHeader jwsHeader = signedJWT.getHeader();
+                        return
+                                jwsHeader.getAlgorithm() == JWSAlgorithm.RS256
+                                        && jwsHeader.getKeyID().equals("my-kid");
+                    } catch (Exception ex) {
+                        return false;
+                    }
+                }));
+    }
+
+    @Test
+    public void shouldSuccess_jksResolver() throws Exception {
+        when(configuration.getKeyResolver()).thenReturn(KeyResolver.JKS);
+        when(configuration.getKid()).thenReturn("my-kid");
+        when(configuration.getAlias()).thenReturn("graviteeio");
+        when(configuration.getStorepass()).thenReturn("graviteeio.my.storepass");
+        when(configuration.getKeypass()).thenReturn("graviteeio.my.keypass");
+        when(configuration.getContent()).thenReturn(GenerateJwtPolicy.class.getResource("/graviteeio.jks").getPath());
+
+        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
+
+        verify(policyChain, times(1)).doNext(request, response);
+        verify(executionContext, times(1)).setAttribute(
+                eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), argThat((ArgumentMatcher<String>) jwt -> {
+                    try {
+                        SignedJWT signedJWT = SignedJWT.parse(jwt);
+                        JWSHeader jwsHeader = signedJWT.getHeader();
+                        return
+                                jwsHeader.getAlgorithm() == JWSAlgorithm.RS256
+                                        && jwsHeader.getKeyID().equals("my-kid");
+                    } catch (Exception ex) {
+                        return false;
+                    }
+                }));
+    }
+
+    @Test
+    public void shouldFail_jksResolver_invalidFile() throws Exception {
+        when(configuration.getKeyResolver()).thenReturn(KeyResolver.JKS);
+        when(configuration.getKid()).thenReturn("my-kid");
+        when(configuration.getContent()).thenReturn("/an-invalid-file.jks");
+
+        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
+
+        verify(policyChain, times(1)).failWith(any(PolicyResult.class));
+    }
+
+    @Test
+    public void shouldFail_jksResolver_emptyAlias() throws Exception {
+        when(configuration.getKeyResolver()).thenReturn(KeyResolver.JKS);
+        when(configuration.getKid()).thenReturn("my-kid");
+        when(configuration.getContent()).thenReturn(GenerateJwtPolicy.class.getResource("/graviteeio.jks").getPath());
+
+        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
+
+        verify(policyChain, times(1)).failWith(any(PolicyResult.class));
+    }
+
+    @Test
+    public void shouldFail_jksResolver_emptyStorepass() throws Exception {
+        when(configuration.getKeyResolver()).thenReturn(KeyResolver.JKS);
+        when(configuration.getKid()).thenReturn("my-kid");
+        when(configuration.getAlias()).thenReturn("graviteeio");
+
+        when(configuration.getContent()).thenReturn(GenerateJwtPolicy.class.getResource("/graviteeio.jks").getPath());
+
+        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
+
+        verify(policyChain, times(1)).failWith(any(PolicyResult.class));
+    }
+
+    @Test
+    public void shouldSuccess_pkcs12Resolver() throws Exception {
+        when(configuration.getKeyResolver()).thenReturn(KeyResolver.PKCS12);
+        when(configuration.getKid()).thenReturn("my-kid");
+        when(configuration.getAlias()).thenReturn("graviteeio");
+        when(configuration.getStorepass()).thenReturn("graviteeio.my.storepass");
+        when(configuration.getContent()).thenReturn(GenerateJwtPolicy.class.getResource("/graviteeio.p12").getPath());
+
+        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
+
+        verify(policyChain, times(1)).doNext(request, response);
+        verify(executionContext, times(1)).setAttribute(
+                eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), argThat((ArgumentMatcher<String>) jwt -> {
+                    try {
+                        SignedJWT signedJWT = SignedJWT.parse(jwt);
+                        JWSHeader jwsHeader = signedJWT.getHeader();
+                        return
+                                jwsHeader.getAlgorithm() == JWSAlgorithm.RS256
+                                        && jwsHeader.getKeyID().equals("my-kid");
+                    } catch (Exception ex) {
+                        return false;
+                    }
+                }));
+    }
+
+    @Test
+    public void shouldSuccess_pkcs12Resolver_emptyAlias() throws Exception {
+        when(configuration.getKeyResolver()).thenReturn(KeyResolver.PKCS12);
+        when(configuration.getKid()).thenReturn("my-kid");
+        when(configuration.getContent()).thenReturn(GenerateJwtPolicy.class.getResource("/graviteeio.p12").getPath());
+
+        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
+
+        verify(policyChain, times(1)).failWith(any(PolicyResult.class));
+    }
+
+    @Test
+    public void shouldSuccess_pkcs12Resolver_invalidFile() throws Exception {
+        when(configuration.getKeyResolver()).thenReturn(KeyResolver.PKCS12);
+        when(configuration.getKid()).thenReturn("my-kid");
+        when(configuration.getContent()).thenReturn("/an-invalid-file.jks");
+
+        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
+
+        verify(policyChain, times(1)).failWith(any(PolicyResult.class));
     }
 
     @Test
@@ -288,7 +429,7 @@ public class GenerateJwtPolicyTest {
                 }));
     }
 
-    private String loadPEMCertificate(String resource) throws IOException {
+    private String loadResource(String resource) throws IOException {
         InputStream stream = GenerateJwtPolicy.class.getResourceAsStream(resource);
         return IOUtils.readInputStreamToString(stream, Charset.defaultCharset());
     }
