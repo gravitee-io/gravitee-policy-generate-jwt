@@ -19,6 +19,42 @@
         }
       }
     },
+    "keyResolver": {
+      "title": "Key resolver",
+      "description": "Define how the private key / secret key must be resolved.",
+      "type" : "string",
+      "default": "INLINE",
+      "enum" : [
+        "INLINE",
+        "PLAIN",
+        "JKS",
+        "PKCS12"
+      ],
+      "x-schema-form": {
+        "type": "select",
+        "titleMap": {
+          "INLINE": "The content of the private key / secret key is provided inline",
+          "PEM": "The content of the private key is provided by reading a PEM file from filesystem (only for RS algorithms)",
+          "JKS": "The content of the private key is provided by reading a JKS file from filesystem (only for RS algorithms)",
+          "PKCS12": "The content of the private key is provided by reading a PKCS12 file from filesystem (only for RS algorithms)"
+        }
+      }
+    },
+    "alias" : {
+      "type" : "string",
+      "title": "Key alias",
+      "description": "Alias used to access a keystore entry (only for JKS and PKCS#12)"
+    },
+    "storepass" : {
+      "type" : "string",
+      "title": "Store password",
+      "description": "Pass used to access the key store (only for JKS and PKCS#12)"
+    },
+    "keypass" : {
+      "type" : "string",
+      "title": "Key password",
+      "description": "Pass used to access the particular key pair's private key (only for JKS)"
+    },
     "kid" : {
       "type" : "string",
       "title": "Key ID",
@@ -63,12 +99,12 @@
     },
     "content" : {
       "type" : "string",
-      "title": "Private key / Secret key",
-      "description": "Specifies a PEM-encoded private key used to sign the JWT or the secret key used to sign tokens with an HMAC algorithm",
+      "title": "Private key / Secret key / key store path",
+      "description": "Specifies a PEM-encoded private key used to sign the JWT or the secret key used to sign tokens with an HMAC algorithm, or the path to your key store",
       "x-schema-form": {
         "type": "codemirror",
         "codemirrorOptions": {
-          "placeholder": "Put PEM-encoded private key or the secret key",
+          "placeholder": "Put PEM-encoded private key or the secret key or the path to your key store",
           "lineWrapping": true,
           "lineNumbers": true,
           "allowDropFileTypes": true
@@ -104,6 +140,7 @@
   },
   "required": [
     "signature",
+    "keyResolver",
     "content"
   ]
 }

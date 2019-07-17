@@ -22,6 +22,7 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jose.util.IOUtils;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import io.gravitee.common.utils.UUID;
@@ -33,12 +34,21 @@ import io.gravitee.policy.api.PolicyResult;
 import io.gravitee.policy.api.annotations.OnRequest;
 import io.gravitee.policy.generatejwt.alg.Signature;
 import io.gravitee.policy.generatejwt.configuration.GenerateJwtPolicyConfiguration;
+import io.gravitee.policy.generatejwt.configuration.KeyResolver;
 
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.InputStream;
+import java.nio.charset.Charset;
+import java.security.KeyStore;
+import java.security.PrivateKey;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
+
+import static java.security.KeyStore.getInstance;
 
 /**
  * @author David BRASSELY (david.brassely at graviteesource.com)
@@ -76,10 +86,44 @@ public class GenerateJwtPolicy {
                         .keyID(configuration.getKid())
                         .build();
 
-                JWK jwk = JWK.parseFromPEMEncodedObjects(configuration.getContent());
+                switch (configuration.getKeyResolver()) {
+                    case PEM:
+                        String pem = IOUtils.readInputStreamToString(readFile(), Charset.defaultCharset());
 
-                // Create RSA-signer with the private key
-                signer = new RSASSASigner((RSAKey) jwk);
+                        signer = new RSASSASigner((RSAKey) JWK.parseFromPEMEncodedObjects(pem));
+                        break;
+                    case JKS:
+                        KeyStore keyStore = getInstance("JKS");
+
+                        if (configuration.getStorepass() != null) {
+                            keyStore.load(readFile(), configuration.getStorepass().toCharArray());
+                        }
+
+                        KeyStore.PrivateKeyEntry pkEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(configuration.getAlias(),
+                                new KeyStore.PasswordProtection(configuration.getKeypass().toCharArray()));
+
+                        signer = new RSASSASigner(pkEntry.getPrivateKey(), true);
+                        break;
+                    case PKCS12:
+                        keyStore = getInstance("PKCS12");
+
+                        if (configuration.getStorepass() != null) {
+                            keyStore.load(readFile(), configuration.getStorepass().toCharArray());
+                        }
+
+                        pkEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(configuration.getAlias(),
+                                new KeyStore.PasswordProtection(configuration.getStorepass().toCharArray()));
+
+                        signer = new RSASSASigner(pkEntry.getPrivateKey(), true);
+
+                        break;
+                    case INLINE:
+                        // Create RSA-signer with the private key
+                        signer = new RSASSASigner((RSAKey) JWK.parseFromPEMEncodedObjects(configuration.getContent()));
+                        break;
+                    default:
+                        break;
+                }
             } else if (configuration.getSignature() == Signature.HMAC_HS256) {
                 jwsHeader = new JWSHeader.Builder(JWSAlgorithm.HS256)
                         .keyID(configuration.getKid())
@@ -169,4 +213,9 @@ public class GenerateJwtPolicy {
 
         return executionContext.getTemplateEngine().convert(value);
     }
+
+    private InputStream readFile() throws FileNotFoundException {
+        return new FileInputStream(configuration.getContent());
+    }
+
 }

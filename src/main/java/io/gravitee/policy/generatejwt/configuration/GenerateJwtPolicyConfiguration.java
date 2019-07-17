@@ -28,7 +28,17 @@ import java.util.concurrent.TimeUnit;
  */
 public class GenerateJwtPolicyConfiguration implements PolicyConfiguration {
 
+    private KeyResolver keyResolver = KeyResolver.INLINE;
+
     private Signature signature = Signature.RSA_RS256;
+
+    private String content;
+
+    private String alias;
+
+    private String storepass;
+
+    private String keypass;
 
     private String kid;
 
@@ -44,9 +54,15 @@ public class GenerateJwtPolicyConfiguration implements PolicyConfiguration {
 
     private String subject;
 
-    private String content;
-
     private List<Claim> customClaims;
+
+    public KeyResolver getKeyResolver() {
+        return keyResolver;
+    }
+
+    public void setKeyResolver(KeyResolver keyResolver) {
+        this.keyResolver = keyResolver;
+    }
 
     public Signature getSignature() {
         return signature;
@@ -126,5 +142,29 @@ public class GenerateJwtPolicyConfiguration implements PolicyConfiguration {
 
     public void setCustomClaims(List<Claim> customClaims) {
         this.customClaims = customClaims;
+    }
+
+    public String getAlias() {
+        return alias;
+    }
+
+    public void setAlias(String alias) {
+        this.alias = alias;
+    }
+
+    public String getStorepass() {
+        return storepass;
+    }
+
+    public void setStorepass(String storepass) {
+        this.storepass = storepass;
+    }
+
+    public String getKeypass() {
+        return keypass;
+    }
+
+    public void setKeypass(String keypass) {
+        this.keypass = keypass;
     }
 }
