@@ -23,7 +23,9 @@ import com.nimbusds.jose.JWSAlgorithm;
  */
 public enum Signature {
     RSA_RS256(JWSAlgorithm.RS256),
-    HMAC_HS256(JWSAlgorithm.HS256);
+    HMAC_HS256(JWSAlgorithm.HS256),
+    HMAC_HS384(JWSAlgorithm.HS384),
+    HMAC_HS512(JWSAlgorithm.HS512);
 
     private JWSAlgorithm alg;
 
