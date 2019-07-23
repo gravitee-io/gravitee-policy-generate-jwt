@@ -34,14 +34,12 @@ import io.gravitee.policy.api.PolicyResult;
 import io.gravitee.policy.api.annotations.OnRequest;
 import io.gravitee.policy.generatejwt.alg.Signature;
 import io.gravitee.policy.generatejwt.configuration.GenerateJwtPolicyConfiguration;
-import io.gravitee.policy.generatejwt.configuration.KeyResolver;
 
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.security.KeyStore;
-import java.security.PrivateKey;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
@@ -124,8 +122,10 @@ public class GenerateJwtPolicy {
                     default:
                         break;
                 }
-            } else if (configuration.getSignature() == Signature.HMAC_HS256) {
-                jwsHeader = new JWSHeader.Builder(JWSAlgorithm.HS256)
+            } else if (configuration.getSignature() == Signature.HMAC_HS256
+                    || configuration.getSignature() == Signature.HMAC_HS384
+                    || configuration.getSignature() == Signature.HMAC_HS512) {
+                jwsHeader = new JWSHeader.Builder(configuration.getSignature().getAlg())
                         .keyID(configuration.getKid())
                         .build();
 

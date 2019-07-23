@@ -357,6 +357,62 @@ public class GenerateJwtPolicyTest {
     }
 
     @Test
+    public void shouldSuccess_hs384_withKid() throws Exception {
+        // Generate random 384-bit (48-byte) shared secret
+        SecureRandom random = new SecureRandom();
+        byte[] sharedSecret = new byte[48];
+        random.nextBytes(sharedSecret);
+
+        when(configuration.getKid()).thenReturn("my-kid");
+        when(configuration.getSignature()).thenReturn(Signature.HMAC_HS384);
+        when(configuration.getContent()).thenReturn(new String(sharedSecret));
+
+        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
+
+        verify(policyChain, times(1)).doNext(request, response);
+        verify(executionContext, times(1)).setAttribute(
+                eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), argThat((ArgumentMatcher<String>) jwt -> {
+                    try {
+                        SignedJWT signedJWT = SignedJWT.parse(jwt);
+                        JWSHeader jwsHeader = signedJWT.getHeader();
+                        return
+                                jwsHeader.getAlgorithm() == JWSAlgorithm.HS384
+                                        && jwsHeader.getKeyID().equals("my-kid");
+                    } catch (Exception ex) {
+                        return false;
+                    }
+                }));
+    }
+
+    @Test
+    public void shouldSuccess_hs512_withKid() throws Exception {
+        // Generate random 512-bit (64-byte) shared secret
+        SecureRandom random = new SecureRandom();
+        byte[] sharedSecret = new byte[64];
+        random.nextBytes(sharedSecret);
+
+        when(configuration.getKid()).thenReturn("my-kid");
+        when(configuration.getSignature()).thenReturn(Signature.HMAC_HS512);
+        when(configuration.getContent()).thenReturn(new String(sharedSecret));
+
+        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
+
+        verify(policyChain, times(1)).doNext(request, response);
+        verify(executionContext, times(1)).setAttribute(
+                eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), argThat((ArgumentMatcher<String>) jwt -> {
+                    try {
+                        SignedJWT signedJWT = SignedJWT.parse(jwt);
+                        JWSHeader jwsHeader = signedJWT.getHeader();
+                        return
+                                jwsHeader.getAlgorithm() == JWSAlgorithm.HS512
+                                        && jwsHeader.getKeyID().equals("my-kid");
+                    } catch (Exception ex) {
+                        return false;
+                    }
+                }));
+    }
+
+    @Test
     public void shouldSuccess_hs256_withJti() throws Exception {
         String jti = UUID.random().toString();
 

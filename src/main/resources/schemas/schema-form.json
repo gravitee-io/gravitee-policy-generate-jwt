@@ -9,13 +9,17 @@
       "default": "RSA_RS256",
       "enum" : [
         "RSA_RS256",
-        "HMAC_HS256"
+        "HMAC_HS256",
+        "HMAC_HS384",
+        "HMAC_HS512"
       ],
       "x-schema-form": {
         "type": "select",
         "titleMap": {
           "RSA_RS256": "RS256 - RSA signature with SHA-256",
-          "HMAC_HS256": "HS256 - HMAC with SHA-256, requires 256+ bit secret"
+          "HMAC_HS256": "HS256 - HMAC with SHA-256, requires 256+ bit secret",
+          "HMAC_HS384": "HS384 - HMAC with SHA-384, requires 384+ bit secret",
+          "HMAC_HS512": "HS512 - HMAC with SHA-512, requires 512+ bit secret"
         }
       }
     },
