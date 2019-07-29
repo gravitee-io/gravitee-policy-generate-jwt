@@ -283,6 +283,17 @@ public class GenerateJwtPolicyTest {
     }
 
     @Test
+    public void shouldFail_pkcs12Resolver_emptyAlias() throws Exception {
+        when(configuration.getKeyResolver()).thenReturn(KeyResolver.PKCS12);
+        when(configuration.getKid()).thenReturn("my-kid");
+        when(configuration.getContent()).thenReturn(getFile("/graviteeio-dummy.p12"));
+
+        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
+
+        verify(policyChain, times(1)).failWith(any(PolicyResult.class));
+    }
+
+    @Test
     public void shouldSuccess_pkcs12Resolver() throws Exception {
         when(configuration.getKeyResolver()).thenReturn(KeyResolver.PKCS12);
         when(configuration.getKid()).thenReturn("my-kid");
@@ -305,21 +316,12 @@ public class GenerateJwtPolicyTest {
                         return false;
                     }
                 }));
-    }
-
-    @Test
-    public void shouldSuccess_pkcs12Resolver_emptyAlias() throws Exception {
-        when(configuration.getKeyResolver()).thenReturn(KeyResolver.PKCS12);
-        when(configuration.getKid()).thenReturn("my-kid");
-        when(configuration.getContent()).thenReturn(getFile("/graviteeio.p12"));
 
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
-
-        verify(policyChain, times(1)).failWith(any(PolicyResult.class));
     }
 
     @Test
-    public void shouldSuccess_pkcs12Resolver_invalidFile() throws Exception {
+    public void shouldFail_pkcs12Resolver_invalidFile() throws Exception {
         when(configuration.getKeyResolver()).thenReturn(KeyResolver.PKCS12);
         when(configuration.getKid()).thenReturn("my-kid");
         when(configuration.getContent()).thenReturn("/an-invalid-file.jks");

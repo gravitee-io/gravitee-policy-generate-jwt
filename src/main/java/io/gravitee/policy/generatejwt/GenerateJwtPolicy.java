@@ -35,15 +35,20 @@ import io.gravitee.policy.api.annotations.OnRequest;
 import io.gravitee.policy.generatejwt.alg.Signature;
 import io.gravitee.policy.generatejwt.configuration.GenerateJwtPolicyConfiguration;
 
+import javax.xml.bind.DatatypeConverter;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.security.KeyStore;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import static java.security.KeyStore.getInstance;
@@ -65,6 +70,12 @@ public class GenerateJwtPolicy {
     private final GenerateJwtPolicyConfiguration configuration;
 
     /**
+     * The key is the reference to the file.
+     * The value is the loaded signer.
+     */
+    private static final Map<String, RSASSASigner> signers = new HashMap<>();
+
+    /**
      * Create a new Generate JWT Policy instance based on its associated configuration
      *
      * @param configuration the associated configuration to the new Generate JWT Policy instance
@@ -84,44 +95,9 @@ public class GenerateJwtPolicy {
                         .keyID(configuration.getKid())
                         .build();
 
-                switch (configuration.getKeyResolver()) {
-                    case PEM:
-                        String pem = IOUtils.readInputStreamToString(readFile(), Charset.defaultCharset());
+                String hash = sha1(configuration.getContent());
 
-                        signer = new RSASSASigner((RSAKey) JWK.parseFromPEMEncodedObjects(pem));
-                        break;
-                    case JKS:
-                        KeyStore keyStore = getInstance("JKS");
-
-                        if (configuration.getStorepass() != null) {
-                            keyStore.load(readFile(), configuration.getStorepass().toCharArray());
-                        }
-
-                        KeyStore.PrivateKeyEntry pkEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(configuration.getAlias(),
-                                new KeyStore.PasswordProtection(configuration.getKeypass().toCharArray()));
-
-                        signer = new RSASSASigner(pkEntry.getPrivateKey(), true);
-                        break;
-                    case PKCS12:
-                        keyStore = getInstance("PKCS12");
-
-                        if (configuration.getStorepass() != null) {
-                            keyStore.load(readFile(), configuration.getStorepass().toCharArray());
-                        }
-
-                        pkEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(configuration.getAlias(),
-                                new KeyStore.PasswordProtection(configuration.getStorepass().toCharArray()));
-
-                        signer = new RSASSASigner(pkEntry.getPrivateKey(), true);
-
-                        break;
-                    case INLINE:
-                        // Create RSA-signer with the private key
-                        signer = new RSASSASigner((RSAKey) JWK.parseFromPEMEncodedObjects(configuration.getContent()));
-                        break;
-                    default:
-                        break;
-                }
+                signer = getSigner(hash);
             } else if (configuration.getSignature() == Signature.HMAC_HS256
                     || configuration.getSignature() == Signature.HMAC_HS384
                     || configuration.getSignature() == Signature.HMAC_HS512) {
@@ -144,6 +120,55 @@ public class GenerateJwtPolicy {
         } catch (Exception ex) {
             policyChain.failWith(PolicyResult.failure("Unable to generate JWT token: " + ex.getMessage()));
         }
+    }
+
+    private RSASSASigner getSigner(String hash) throws Exception {
+        RSASSASigner signer = signers.get(hash);
+        if (signer == null) {
+            // Load
+            switch (configuration.getKeyResolver()) {
+                case PEM:
+                    String pem = IOUtils.readInputStreamToString(readFile(), Charset.defaultCharset());
+
+                    signer = new RSASSASigner((RSAKey) JWK.parseFromPEMEncodedObjects(pem));
+                    break;
+                case JKS:
+                    KeyStore keyStore = getInstance("JKS");
+
+                    if (configuration.getStorepass() != null) {
+                        keyStore.load(readFile(), configuration.getStorepass().toCharArray());
+                    }
+
+                    KeyStore.PrivateKeyEntry pkEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(configuration.getAlias(),
+                            new KeyStore.PasswordProtection(configuration.getKeypass().toCharArray()));
+
+                    signer = new RSASSASigner(pkEntry.getPrivateKey(), true);
+                    break;
+                case PKCS12:
+                    keyStore = getInstance("PKCS12");
+
+                    if (configuration.getStorepass() != null) {
+                        keyStore.load(readFile(), configuration.getStorepass().toCharArray());
+                    }
+
+                    pkEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(configuration.getAlias(),
+                            new KeyStore.PasswordProtection(configuration.getStorepass().toCharArray()));
+
+                    signer = new RSASSASigner(pkEntry.getPrivateKey(), true);
+
+                    break;
+                case INLINE:
+                    // Create RSA-signer with the private key
+                    signer = new RSASSASigner((RSAKey) JWK.parseFromPEMEncodedObjects(configuration.getContent()));
+                    break;
+                default:
+                    break;
+            }
+
+            signers.put(hash, signer);
+        }
+
+        return signer;
     }
 
     private JWTClaimsSet buildClaims(ExecutionContext executionContext) {
@@ -218,4 +243,14 @@ public class GenerateJwtPolicy {
         return new FileInputStream(configuration.getContent());
     }
 
+    public String sha1(String input) {
+        String sha1 = null;
+        try {
+            MessageDigest msdDigest = MessageDigest.getInstance("SHA-1");
+            msdDigest.update(input.getBytes(Charset.defaultCharset()), 0, input.length());
+            sha1 = DatatypeConverter.printHexBinary(msdDigest.digest());
+        } catch (NoSuchAlgorithmException e) {
+        }
+        return sha1;
+    }
 }
