@@ -89,8 +89,8 @@ public class GenerateJwtPolicyTest {
         when(executionContext.getTemplateEngine()).thenReturn(templateEngine);
         when(configuration.getKeyResolver()).thenReturn(KeyResolver.INLINE);
 
-        when(templateEngine.convert(anyString())).thenAnswer(
-                (Answer<String>) invocationOnMock -> invocationOnMock.getArgument(0));
+        when(templateEngine.convert(anyString())).thenAnswer(invMock -> invMock.getArgument(0));
+        when(templateEngine.getValue(anyString(), any())).thenAnswer(invMock -> invMock.getArgument(0));
     }
 
     @Test
@@ -459,12 +459,14 @@ public class GenerateJwtPolicyTest {
         List<Claim> claims = new ArrayList<>();
         claims.add(new Claim("claim1", "claim1-value"));
         claims.add(new Claim("claim2", "claim2-value"));
+        claims.add(new Claim("claim3", "elReturningNumber"));
 
         when(configuration.getCustomClaims()).thenReturn(claims);
         when(configuration.getId()).thenReturn(jti);
         when(configuration.getKid()).thenReturn("my-kid");
         when(configuration.getSignature()).thenReturn(Signature.HMAC_HS256);
         when(configuration.getContent()).thenReturn(new String(sharedSecret));
+        when(templateEngine.getValue("elReturningNumber", Object.class)).thenReturn(12345L);
 
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
@@ -481,7 +483,8 @@ public class GenerateJwtPolicyTest {
                                         && jwsHeader.getKeyID().equals("my-kid")
                                         && claimsSet.getJWTID().equals(jti)
                                         && claimsSet.getStringClaim("claim1").equals("claim1-value")
-                                        && claimsSet.getStringClaim("claim2").equals("claim2-value");
+                                        && claimsSet.getStringClaim("claim2").equals("claim2-value")
+                                        && claimsSet.getClaim("claim3").equals(12345L);
                     } catch (Exception ex) {
                         return false;
                     }

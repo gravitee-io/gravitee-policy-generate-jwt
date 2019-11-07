@@ -180,7 +180,7 @@ public class GenerateJwtPolicy {
         claimsSet.issueTime(Date.from(issuerTime));
 
         // JTI / JWT ID
-        String jti = templatize(executionContext, configuration.getId());
+        String jti = templatizeString(executionContext, configuration.getId());
         if (jti == null || jti.isEmpty()) {
             claimsSet.jwtID(UUID.random().toString());
         } else {
@@ -190,25 +190,25 @@ public class GenerateJwtPolicy {
         // Audience
         if (configuration.getAudiences() != null) {
             if (configuration.getAudiences().size() == 1) {
-                String aud = templatize(executionContext, configuration.getAudiences().get(0));
+                String aud = templatizeString(executionContext, configuration.getAudiences().get(0));
                 claimsSet.audience(aud);
             } else {
                 List<String> audiences = configuration.getAudiences()
                         .stream()
-                        .map(aud -> templatize(executionContext, aud))
+                        .map(aud -> templatizeString(executionContext, aud))
                         .collect(Collectors.toList());
                 claimsSet.audience(audiences);
             }
         }
 
         // Subject
-        String subject = templatize(executionContext, configuration.getSubject());
+        String subject = templatizeString(executionContext, configuration.getSubject());
         if (subject != null && !subject.isEmpty()) {
             claimsSet.subject(subject);
         }
 
         // Issuer
-        String issuer = templatize(executionContext, configuration.getIssuer());
+        String issuer = templatizeString(executionContext, configuration.getIssuer());
         if (issuer != null && !issuer.isEmpty()) {
             claimsSet.issuer(issuer);
         }
@@ -225,13 +225,21 @@ public class GenerateJwtPolicy {
         // Custom claims
         if (configuration.getCustomClaims() != null && !configuration.getCustomClaims().isEmpty()) {
             configuration.getCustomClaims()
-                    .forEach(claim -> claimsSet.claim(claim.getName(), templatize(executionContext, claim.getValue())));
+                    .forEach(claim -> claimsSet.claim(claim.getName(), templatizeObject(executionContext, claim.getValue())));
 
         }
         return claimsSet.build();
     }
 
-    private String templatize(ExecutionContext executionContext, String value) {
+    private Object templatizeObject(ExecutionContext executionContext, String value) {
+        if (value == null || value.isEmpty()) {
+            return value;
+        }
+
+        return executionContext.getTemplateEngine().getValue(value, Object.class);
+    }
+
+    private String templatizeString(ExecutionContext executionContext, String value) {
         if (value == null || value.isEmpty()) {
             return value;
         }
@@ -249,7 +257,7 @@ public class GenerateJwtPolicy {
             MessageDigest msdDigest = MessageDigest.getInstance("SHA-1");
             msdDigest.update(input.getBytes(Charset.defaultCharset()), 0, input.length());
             sha1 = DatatypeConverter.printHexBinary(msdDigest.digest());
-        } catch (NoSuchAlgorithmException e) {
+        } catch (NoSuchAlgorithmException ignored) {
         }
         return sha1;
     }
