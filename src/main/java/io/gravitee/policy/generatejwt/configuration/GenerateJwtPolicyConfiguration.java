@@ -42,6 +42,8 @@ public class GenerateJwtPolicyConfiguration implements PolicyConfiguration {
 
     private String kid;
 
+    private X509CertificateChain x509CertificateChain = X509CertificateChain.NONE;
+
     private List<String> audiences;
 
     private long expiresIn = 30;
@@ -78,6 +80,14 @@ public class GenerateJwtPolicyConfiguration implements PolicyConfiguration {
 
     public void setKid(String kid) {
         this.kid = kid;
+    }
+
+    public X509CertificateChain getX509CertificateChain() {
+        return x509CertificateChain;
+    }
+
+    public void setX509CertificateChain(X509CertificateChain x509CertificateChain) {
+        this.x509CertificateChain = x509CertificateChain;
     }
 
     public List<String> getAudiences() {
