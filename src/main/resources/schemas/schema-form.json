@@ -64,6 +64,23 @@
       "title": "Key ID",
       "description": "Specifies the key ID (kid) to include in the JWT header"
     },
+    "x509CertificateChain": {
+      "title": "Certificate chain",
+      "description": "Whether a certificate chain should be added as an X5C attribute (only for RS256, JKS and PKCS#12)",
+      "type" : "string",
+      "default": "NONE",
+      "enum" : [
+        "NONE",
+        "X5C"
+      ],
+      "x-schema-form": {
+        "type": "select",
+        "titleMap": {
+          "NONE": "Do not add a certificate chain",
+          "X5C": "Add a certificate chain as an X5C attribute"
+        }
+      }
+    },
     "id" : {
       "type" : "string",
       "title": "JWT ID",

@@ -22,6 +22,7 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jose.util.Base64;
 import com.nimbusds.jose.util.IOUtils;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
@@ -34,6 +35,7 @@ import io.gravitee.policy.api.PolicyResult;
 import io.gravitee.policy.api.annotations.OnRequest;
 import io.gravitee.policy.generatejwt.alg.Signature;
 import io.gravitee.policy.generatejwt.configuration.GenerateJwtPolicyConfiguration;
+import io.gravitee.policy.generatejwt.configuration.X509CertificateChain;
 
 import javax.xml.bind.DatatypeConverter;
 import java.io.FileInputStream;
@@ -41,17 +43,21 @@ import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.security.KeyStore;
+import java.security.KeyStoreException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.cert.CertificateEncodingException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import static java.security.KeyStore.getInstance;
+import static java.security.KeyStore.*;
 
 /**
  * @author David BRASSELY (david.brassely at graviteesource.com)
@@ -76,6 +82,11 @@ public class GenerateJwtPolicy {
     private static final Map<String, RSASSASigner> signers = new HashMap<>();
 
     /**
+     * The encoded certificate chain used for the x5c header
+     */
+    private static List<Base64> certificateChain = new ArrayList<>();
+
+    /**
      * Create a new Generate JWT Policy instance based on its associated configuration
      *
      * @param configuration the associated configuration to the new Generate JWT Policy instance
@@ -91,13 +102,18 @@ public class GenerateJwtPolicy {
             JWSHeader jwsHeader = null;
 
             if (configuration.getSignature() == null || configuration.getSignature() == Signature.RSA_RS256) {
-                jwsHeader = new JWSHeader.Builder(JWSAlgorithm.RS256)
-                        .keyID(configuration.getKid())
-                        .build();
 
                 String hash = sha1(configuration.getContent());
 
                 signer = getSigner(hash);
+
+                JWSHeader.Builder builder = new JWSHeader.Builder(JWSAlgorithm.RS256)
+                        .keyID(configuration.getKid());
+                if (configuration.getX509CertificateChain() == X509CertificateChain.X5C) {
+                    builder.x509CertChain(certificateChain);
+                }
+                jwsHeader = builder.build();
+
             } else if (configuration.getSignature() == Signature.HMAC_HS256
                     || configuration.getSignature() == Signature.HMAC_HS384
                     || configuration.getSignature() == Signature.HMAC_HS512) {
@@ -137,6 +153,7 @@ public class GenerateJwtPolicy {
 
                     if (configuration.getStorepass() != null) {
                         keyStore.load(readFile(), configuration.getStorepass().toCharArray());
+                        addCertificateChain(keyStore, configuration);
                     }
 
                     KeyStore.PrivateKeyEntry pkEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(configuration.getAlias(),
@@ -149,6 +166,7 @@ public class GenerateJwtPolicy {
 
                     if (configuration.getStorepass() != null) {
                         keyStore.load(readFile(), configuration.getStorepass().toCharArray());
+                        addCertificateChain(keyStore, configuration);
                     }
 
                     pkEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(configuration.getAlias(),
@@ -169,6 +187,17 @@ public class GenerateJwtPolicy {
         }
 
         return signer;
+    }
+
+    private void addCertificateChain(KeyStore keyStore, GenerateJwtPolicyConfiguration configuration)
+            throws KeyStoreException {
+        certificateChain = Arrays.stream(keyStore.getCertificateChain(configuration.getAlias())).map(c -> {
+            try {
+                return Base64.encode(c.getEncoded());
+            } catch (CertificateEncodingException ex) {
+                throw new IllegalArgumentException("Failed to encode certificate.", ex);
+            }
+        }).collect(Collectors.toList());
     }
 
     private JWTClaimsSet buildClaims(ExecutionContext executionContext) {

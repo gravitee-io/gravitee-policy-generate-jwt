@@ -17,6 +17,7 @@ package io.gravitee.policy.generatejwt;
 
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.util.Base64;
 import com.nimbusds.jose.util.IOUtils;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
@@ -30,6 +31,7 @@ import io.gravitee.policy.api.PolicyResult;
 import io.gravitee.policy.generatejwt.alg.Signature;
 import io.gravitee.policy.generatejwt.configuration.GenerateJwtPolicyConfiguration;
 import io.gravitee.policy.generatejwt.configuration.KeyResolver;
+import io.gravitee.policy.generatejwt.configuration.X509CertificateChain;
 import io.gravitee.policy.generatejwt.model.Claim;
 import io.gravitee.reporter.api.http.Metrics;
 import org.junit.Before;
@@ -37,19 +39,19 @@ import org.junit.Test;
 import org.mockito.ArgumentMatcher;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.mockito.stubbing.Answer;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
-import java.security.KeyStore;
-import java.security.PrivateKey;
 import java.security.SecureRandom;
+import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.List;
 
-import static java.security.KeyStore.getInstance;
 import static org.mockito.Mockito.*;
 
 /**
@@ -229,6 +231,7 @@ public class GenerateJwtPolicyTest {
         when(configuration.getStorepass()).thenReturn("graviteeio.my.storepass");
         when(configuration.getKeypass()).thenReturn("graviteeio.my.keypass");
         when(configuration.getContent()).thenReturn(getFile("/graviteeio.jks"));
+        when(configuration.getX509CertificateChain()).thenReturn(X509CertificateChain.X5C);
 
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
@@ -240,7 +243,8 @@ public class GenerateJwtPolicyTest {
                         JWSHeader jwsHeader = signedJWT.getHeader();
                         return
                                 jwsHeader.getAlgorithm() == JWSAlgorithm.RS256
-                                        && jwsHeader.getKeyID().equals("my-kid");
+                                        && jwsHeader.getKeyID().equals("my-kid")
+                                        && hasValidX509CertificateChain(jwsHeader.getX509CertChain());
                     } catch (Exception ex) {
                         return false;
                     }
@@ -300,6 +304,7 @@ public class GenerateJwtPolicyTest {
         when(configuration.getAlias()).thenReturn("graviteeio");
         when(configuration.getStorepass()).thenReturn("graviteeio.my.storepass");
         when(configuration.getContent()).thenReturn(getFile("/graviteeio.p12"));
+        when(configuration.getX509CertificateChain()).thenReturn(X509CertificateChain.NONE);
 
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
@@ -311,7 +316,8 @@ public class GenerateJwtPolicyTest {
                         JWSHeader jwsHeader = signedJWT.getHeader();
                         return
                                 jwsHeader.getAlgorithm() == JWSAlgorithm.RS256
-                                        && jwsHeader.getKeyID().equals("my-kid");
+                                        && jwsHeader.getKeyID().equals("my-kid")
+                                        && jwsHeader.getX509CertChain() == null;
                     } catch (Exception ex) {
                         return false;
                     }
@@ -489,6 +495,18 @@ public class GenerateJwtPolicyTest {
                         return false;
                     }
                 }));
+    }
+
+    private boolean hasValidX509CertificateChain(final List<Base64> x509CertChain) {
+        byte[] bytes = x509CertChain.get(0).decode();
+        try (InputStream stream = new ByteArrayInputStream(bytes)) {
+            CertificateFactory factory = CertificateFactory.getInstance("X.509");
+            X509Certificate certificate = (X509Certificate) factory.generateCertificate(stream);
+            certificate.checkValidity();
+        } catch (Exception e) {
+            return false;
+        }
+        return true;
     }
 
     private String getFile(String resource) throws Exception {
