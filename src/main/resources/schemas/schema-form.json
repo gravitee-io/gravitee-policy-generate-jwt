@@ -83,13 +83,16 @@
     },
     "id" : {
       "type" : "string",
-      "title": "JWT ID",
-      "description": "JWT ID (jti) claim is a unique identifier for the JWT. Defaults to UUID."
+      "title": "JWT ID. Supports EL.",
+      "description": "JWT ID (jti) claim is a unique identifier for the JWT. Defaults to UUID.",
+      "x-schema-form": {
+        "expression-language": true
+      }
     },
     "audiences" : {
       "type" : "array",
       "title": "Audiences",
-      "description": "Claim identifies the recipients that the JWT is intended for",
+      "description": "Claim identifies the recipients that the JWT is intended for. Supports EL.",
       "items" : {
         "type" : "string"
       }
@@ -97,8 +100,11 @@
     "issuer" : {
       "type" : "string",
       "title": "Issuer",
-      "description": "Claim that identifies the issuer of the JWT",
-      "default": "urn://gravitee-api-gw"
+      "description": "Claim that identifies the issuer of the JWT. Supports EL.",
+      "default": "urn://gravitee-api-gw",
+      "x-schema-form": {
+        "expression-language": true
+      }
     },
     "expiresIn" : {
       "type" : "integer",
@@ -116,7 +122,10 @@
     "subject" : {
       "type" : "string",
       "title": "Subject",
-      "description": "Claim identifies or makes a statement about the subject of the JWT"
+      "description": "Claim identifies or makes a statement about the subject of the JWT. Supports EL.",
+      "x-schema-form": {
+        "expression-language": true
+      }
     },
     "content" : {
       "type" : "string",
@@ -149,7 +158,10 @@
           "value" : {
             "type" : "string",
             "title": "Value",
-            "description": "Value of the claim"
+            "description": "Value of the claim. Supports EL.",
+            "x-schema-form": {
+              "expression-language": true
+            }
           }
         },
         "required": [
