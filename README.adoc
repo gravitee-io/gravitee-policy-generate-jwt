@@ -28,6 +28,10 @@ to backend targets, or used in some other way.
 
 When a signed JWT is generated, it is put in the `jwt.generated` attribute of the request execution context.
 
+=== Policy identifier
+
+You can enable or disable the policy with policy identifier `policy-generate-jwt`.
+
 == Configuration
 
 |===
