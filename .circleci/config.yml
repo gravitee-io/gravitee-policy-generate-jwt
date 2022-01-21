@@ -1,63 +1,35 @@
 version: 2.1
 
-parameters:
-  gio_action:
-    type: enum
-    enum: [release, pr_build]
-    default: pr_build
-  dry_run:
-    type: boolean
-    default: true
-    description: "Run in dry run mode?"
-  maven_profile_id:
-    type: string
-    default: "gravitee-dry-run"
-    description: "Maven ID of the Maven profile to use for a dry run ?"
-  secrethub_org:
-    type: string
-    default: "gravitee-lab"
-    description: "SecretHub Org to use to fetch secrets ?"
-  secrethub_repo:
-    type: string
-    default: "cicd"
-    description: "SecretHub Repo to use to fetch secrets ?"
+# this allows you to use CircleCI's dynamic configuration feature
+setup: true
 
 orbs:
-  gravitee: gravitee-io/gravitee@dev:1.0.4
+    gravitee: gravitee-io/gravitee@2.0
 
+# our single workflow, that triggers the setup job defined above, filters on tag and branches are needed otherwise
+# some workflow and job will not be triggered for tags (default CircleCI behavior)
 workflows:
-  version: 2.1
-  pull_requests:
-    when:
-      equal: [ pr_build, << pipeline.parameters.gio_action >> ]
-    jobs:
-      - gravitee/pr-build:
-          context: cicd-orchestrator
-  release:
-    # see https://circleci.com/docs/2.0/configuration-reference/#logic-statement-examples
-    when:
-      and:
-        - equal: [ release, << pipeline.parameters.gio_action >> ]
-        - not: << pipeline.parameters.dry_run >>
-    jobs:
-      # return to simple definition :
-      - gravitee/release:
-          context: cicd-orchestrator
-          dry_run: << pipeline.parameters.dry_run >>
-          secrethub_org: << pipeline.parameters.secrethub_org >>
-          secrethub_repo: << pipeline.parameters.secrethub_repo >>
-          maven_profile_id: << pipeline.parameters.maven_profile_id >>
-  release_dry_run:
-    # see https://circleci.com/docs/2.0/configuration-reference/#logic-statement-examples
-    when:
-      and:
-        - equal: [ release, << pipeline.parameters.gio_action >> ]
-        - << pipeline.parameters.dry_run >>
-    jobs:
-      # return to simple definition :
-      - gravitee/release:
-          context: cicd-orchestrator
-          dry_run: << pipeline.parameters.dry_run >>
-          secrethub_org: << pipeline.parameters.secrethub_org >>
-          secrethub_repo: << pipeline.parameters.secrethub_repo >>
-          maven_profile_id: << pipeline.parameters.maven_profile_id >>
+    setup_build:
+        when:
+            not: << pipeline.git.tag >>
+        jobs:
+            - gravitee/setup_plugin-build-config:
+                  filters:
+                      tags:
+                          ignore:
+                              - /.*/
+
+    setup_release:
+        when:
+            matches:
+                pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+                value: << pipeline.git.tag >>
+        jobs:
+            - gravitee/setup_plugin-release-config:
+                  filters:
+                      branches:
+                          ignore:
+                              - /.*/
+                      tags:
+                          only:
+                              - /^[0-9]+\.[0-9]+\.[0-9]+$/
