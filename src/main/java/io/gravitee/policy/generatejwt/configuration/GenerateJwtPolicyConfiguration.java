@@ -18,7 +18,6 @@ package io.gravitee.policy.generatejwt.configuration;
 import io.gravitee.policy.api.PolicyConfiguration;
 import io.gravitee.policy.generatejwt.alg.Signature;
 import io.gravitee.policy.generatejwt.model.Claim;
-
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 

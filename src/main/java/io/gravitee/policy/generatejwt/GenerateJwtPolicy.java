@@ -15,6 +15,8 @@
  */
 package io.gravitee.policy.generatejwt;
 
+import static java.security.KeyStore.*;
+
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.JWSSigner;
@@ -36,8 +38,6 @@ import io.gravitee.policy.api.annotations.OnRequest;
 import io.gravitee.policy.generatejwt.alg.Signature;
 import io.gravitee.policy.generatejwt.configuration.GenerateJwtPolicyConfiguration;
 import io.gravitee.policy.generatejwt.configuration.X509CertificateChain;
-
-import javax.xml.bind.DatatypeConverter;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
@@ -56,8 +56,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-
-import static java.security.KeyStore.*;
+import javax.xml.bind.DatatypeConverter;
 
 /**
  * @author David BRASSELY (david.brassely at graviteesource.com)
@@ -102,24 +101,21 @@ public class GenerateJwtPolicy {
             JWSHeader jwsHeader = null;
 
             if (configuration.getSignature() == null || configuration.getSignature() == Signature.RSA_RS256) {
-
                 String hash = sha1(configuration.getContent());
 
                 signer = getSigner(hash);
 
-                JWSHeader.Builder builder = new JWSHeader.Builder(JWSAlgorithm.RS256)
-                        .keyID(configuration.getKid());
+                JWSHeader.Builder builder = new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(configuration.getKid());
                 if (configuration.getX509CertificateChain() == X509CertificateChain.X5C) {
                     builder.x509CertChain(certificateChain);
                 }
                 jwsHeader = builder.build();
-
-            } else if (configuration.getSignature() == Signature.HMAC_HS256
-                    || configuration.getSignature() == Signature.HMAC_HS384
-                    || configuration.getSignature() == Signature.HMAC_HS512) {
-                jwsHeader = new JWSHeader.Builder(configuration.getSignature().getAlg())
-                        .keyID(configuration.getKid())
-                        .build();
+            } else if (
+                configuration.getSignature() == Signature.HMAC_HS256 ||
+                configuration.getSignature() == Signature.HMAC_HS384 ||
+                configuration.getSignature() == Signature.HMAC_HS512
+            ) {
+                jwsHeader = new JWSHeader.Builder(configuration.getSignature().getAlg()).keyID(configuration.getKid()).build();
 
                 signer = new MACSigner(configuration.getContent());
             }
@@ -156,8 +152,10 @@ public class GenerateJwtPolicy {
                         addCertificateChain(keyStore, configuration);
                     }
 
-                    KeyStore.PrivateKeyEntry pkEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(configuration.getAlias(),
-                            new KeyStore.PasswordProtection(configuration.getKeypass().toCharArray()));
+                    KeyStore.PrivateKeyEntry pkEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(
+                        configuration.getAlias(),
+                        new KeyStore.PasswordProtection(configuration.getKeypass().toCharArray())
+                    );
 
                     signer = new RSASSASigner(pkEntry.getPrivateKey(), true);
                     break;
@@ -169,8 +167,11 @@ public class GenerateJwtPolicy {
                         addCertificateChain(keyStore, configuration);
                     }
 
-                    pkEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(configuration.getAlias(),
-                            new KeyStore.PasswordProtection(configuration.getStorepass().toCharArray()));
+                    pkEntry =
+                        (KeyStore.PrivateKeyEntry) keyStore.getEntry(
+                            configuration.getAlias(),
+                            new KeyStore.PasswordProtection(configuration.getStorepass().toCharArray())
+                        );
 
                     signer = new RSASSASigner(pkEntry.getPrivateKey(), true);
 
@@ -189,15 +190,18 @@ public class GenerateJwtPolicy {
         return signer;
     }
 
-    private void addCertificateChain(KeyStore keyStore, GenerateJwtPolicyConfiguration configuration)
-            throws KeyStoreException {
-        certificateChain = Arrays.stream(keyStore.getCertificateChain(configuration.getAlias())).map(c -> {
-            try {
-                return Base64.encode(c.getEncoded());
-            } catch (CertificateEncodingException ex) {
-                throw new IllegalArgumentException("Failed to encode certificate.", ex);
-            }
-        }).collect(Collectors.toList());
+    private void addCertificateChain(KeyStore keyStore, GenerateJwtPolicyConfiguration configuration) throws KeyStoreException {
+        certificateChain =
+            Arrays
+                .stream(keyStore.getCertificateChain(configuration.getAlias()))
+                .map(c -> {
+                    try {
+                        return Base64.encode(c.getEncoded());
+                    } catch (CertificateEncodingException ex) {
+                        throw new IllegalArgumentException("Failed to encode certificate.", ex);
+                    }
+                })
+                .collect(Collectors.toList());
     }
 
     private JWTClaimsSet buildClaims(ExecutionContext executionContext) {
@@ -222,10 +226,11 @@ public class GenerateJwtPolicy {
                 String aud = templatizeString(executionContext, configuration.getAudiences().get(0));
                 claimsSet.audience(aud);
             } else {
-                List<String> audiences = configuration.getAudiences()
-                        .stream()
-                        .map(aud -> templatizeString(executionContext, aud))
-                        .collect(Collectors.toList());
+                List<String> audiences = configuration
+                    .getAudiences()
+                    .stream()
+                    .map(aud -> templatizeString(executionContext, aud))
+                    .collect(Collectors.toList());
                 claimsSet.audience(audiences);
             }
         }
@@ -244,18 +249,16 @@ public class GenerateJwtPolicy {
 
         // Expires in
         if (configuration.getExpiresIn() > 0) {
-            Instant expiresIn = issuerTime.plus(
-                    configuration.getExpiresIn(),
-                    ChronoUnit.valueOf(configuration.getExpiresInUnit().name()));
+            Instant expiresIn = issuerTime.plus(configuration.getExpiresIn(), ChronoUnit.valueOf(configuration.getExpiresInUnit().name()));
 
             claimsSet.expirationTime(Date.from(expiresIn));
         }
 
         // Custom claims
         if (configuration.getCustomClaims() != null && !configuration.getCustomClaims().isEmpty()) {
-            configuration.getCustomClaims()
-                    .forEach(claim -> claimsSet.claim(claim.getName(), templatizeObject(executionContext, claim.getValue())));
-
+            configuration
+                .getCustomClaims()
+                .forEach(claim -> claimsSet.claim(claim.getName(), templatizeObject(executionContext, claim.getValue())));
         }
         return claimsSet.build();
     }
@@ -286,8 +289,7 @@ public class GenerateJwtPolicy {
             MessageDigest msdDigest = MessageDigest.getInstance("SHA-1");
             msdDigest.update(input.getBytes(Charset.defaultCharset()), 0, input.length());
             sha1 = DatatypeConverter.printHexBinary(msdDigest.digest());
-        } catch (NoSuchAlgorithmException ignored) {
-        }
+        } catch (NoSuchAlgorithmException ignored) {}
         return sha1;
     }
 }

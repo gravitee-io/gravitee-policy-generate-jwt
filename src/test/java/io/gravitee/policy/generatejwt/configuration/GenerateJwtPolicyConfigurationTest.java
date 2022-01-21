@@ -17,19 +17,20 @@ package io.gravitee.policy.generatejwt.configuration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gravitee.policy.generatejwt.alg.Signature;
-import org.junit.Assert;
-import org.junit.Test;
-
 import java.io.IOException;
 import java.net.URL;
 import java.util.concurrent.TimeUnit;
+import org.junit.Assert;
+import org.junit.Test;
 
 public class GenerateJwtPolicyConfigurationTest {
 
     @Test
     public void shouldGetDefaultValues() throws IOException {
-        GenerateJwtPolicyConfiguration configuration =
-                load("/io/gravitee/policy/generatejwt/configuration/generatejwt01.json", GenerateJwtPolicyConfiguration.class);
+        GenerateJwtPolicyConfiguration configuration = load(
+            "/io/gravitee/policy/generatejwt/configuration/generatejwt01.json",
+            GenerateJwtPolicyConfiguration.class
+        );
 
         Assert.assertNotNull(configuration);
 
@@ -43,8 +44,10 @@ public class GenerateJwtPolicyConfigurationTest {
 
     @Test
     public void shouldGetDefaultValues_withIssuer() throws IOException {
-        GenerateJwtPolicyConfiguration configuration =
-                load("/io/gravitee/policy/generatejwt/configuration/generatejwt02.json", GenerateJwtPolicyConfiguration.class);
+        GenerateJwtPolicyConfiguration configuration = load(
+            "/io/gravitee/policy/generatejwt/configuration/generatejwt02.json",
+            GenerateJwtPolicyConfiguration.class
+        );
 
         Assert.assertNotNull(configuration);
 

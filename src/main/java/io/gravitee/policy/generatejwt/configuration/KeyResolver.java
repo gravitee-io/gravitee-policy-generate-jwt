@@ -20,9 +20,8 @@ package io.gravitee.policy.generatejwt.configuration;
  * @author GraviteeSource Team
  */
 public enum KeyResolver {
-
     INLINE,
     JKS,
     PKCS12,
-    PEM
+    PEM,
 }

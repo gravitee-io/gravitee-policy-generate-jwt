@@ -27,9 +27,7 @@ public class Claim {
 
     private String value;
 
-    public Claim() {
-
-    }
+    public Claim() {}
 
     public Claim(String name, String value) {
         this.name = name;

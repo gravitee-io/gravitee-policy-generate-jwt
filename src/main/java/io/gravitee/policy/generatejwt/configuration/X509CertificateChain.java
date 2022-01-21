@@ -20,7 +20,6 @@ package io.gravitee.policy.generatejwt.configuration;
  * @author GraviteeSource Team
  */
 public enum X509CertificateChain {
-
     NONE,
-    X5C
+    X5C,
 }
