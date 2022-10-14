@@ -64,6 +64,11 @@
       "title": "Key ID",
       "description": "Specifies the key ID (kid) to include in the JWT header"
     },
+    "x5t" : {
+        "type" : "string",
+        "title": "Certificate Fingerprint (SHA1)",
+        "description": "Specifies the certificate fingerprint (SHA1) value, which will be Base64 URL encoded as x5t in the JWT header"
+    },
     "x509CertificateChain": {
       "title": "Certificate chain",
       "description": "Whether a certificate chain should be added as an X5C attribute (only for RS256, JKS and PKCS#12)",

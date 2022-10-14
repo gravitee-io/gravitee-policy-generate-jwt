@@ -48,6 +48,12 @@ When a signed JWT is generated, it is put in the `jwt.generated` attribute of th
 ^.^|string
 ^.^|-
 
+.^|x5t
+^.^|-
+|Base64 URL encoding of the certificate fingerprint (SHA1) to include in the JWT header
+^.^|string
+^.^|-
+
 .^|id
 ^.^|-
 |JWT ID (`jti`) claim is a unique identifier for the JWT
@@ -101,6 +107,7 @@ You can read the token using Expression Language:
     "expiresInUnit":"SECONDS",
     "issuer":"urn://gravitee-api-gw",
     "audiences":["graviteeam"],
+    "x5t":"402bb276abddac7b73e31e687d29c2e56a699bb9",
     "customClaims":[],
     "id":"817c6cfa-6ae6-446e-a631-5ded215b404b",
     "content":"-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDg0MY5LcTnpM/N\nd9ohW/mls6CqF3PoVocwUpKSb324QFuSGvo5s2qzM1JkR2uNTS5lapGltF0Krc5j\nmUgKqVZUx3ie76ngvHTVrz9qNHe9znsTFndtpsaFZuNIiGT8X+eAYgqKUaoKA+3y\nNWynEmXL9ywtFtGommPO1iBwMYfbucuxBmwtklkzxCrFGftAsTJANy8T+CV61TpB\nP2LbFVngfT0uDgjfoG/KMSBUZR88YZNvEyj1mEDPvZPZD6vYUBlTMlWgAwAD+pUn\n6b/a1BsZ69mMvMzvOg9NhuwMLwGDwQ45Gh51Swnzk6a/Oamgpa/ehySfZkypJhPL\ndiutySELAgMBAAECggEBALjo/yFok9wzovfM7I0jqWKxLCS6xYsEII2OXSA0s6Mo\nzCiQJ9/twoVCYTI5zCycntyrmsBAaYavDmK9YJPkVC3HI18WoRNH7pETY4VnQlXL\nz08T24dE9WQkDC1MgkNSXocqHKFIKiOyt7PQXV3NtAzfcGZlrmyPECi/1k5xbt05\nmU1AaM0HAKP5kGmoANEWyaPhYSrShD3EQH8QEjPwrmua62e7kas7x5u5u01tFndv\nG1/rYlApvruwoczBdD3R8WQEdziFn09IcGZUnpBWDkPlEn62qLW8/3k+uF9An9dd\n1c0IoyNopefLvm9W4CXtzFEzJsre32BIutpj66EECAECgYEA+2GYTmd7lVAAMgj/\nMes+HNVqRtg5OiAggx6qvjhi+6hhMLeVKS8mqslMQXewHthbY0+PdyvKRCZnNURj\nUmeZxxk04kOJZqN5ak45NJ6T10PnlZ0vtf2Ym9Mmi4Q29Mzk9SCR9NtVuwRHhGmP\nzOPCXQCwFHeVkqzqkYHIji1ko0sCgYEA5PI5WkWFG/uAPxVZbQreyD1iRgTxEz8B\nn1XefxQ1IV8L5/n48XAgeK1NUbhr4jPSbXL98mX5/RdyCmZORdbPLDRqSVrRepQ3\nAXF82Xp2X9Py/Gn/pIZPXEW54ctnEiW8WVRD2XQ2df1sUq+H5gX/RraiI2O9/CyF\nixZkkC4tIUECgYEAw/lt15HtUpYv0NIawTv4DFqEo/5lft8U+aOq0Oj8ody/CE/W\nxWiw6GxOOquobiOV+3JHEkzdPwwBYhGSrOd/hywrgknMkGvZd/rLti36a9PQc187\nltHBa5nNbu8AORCTXlap8w4bY9UOPDhflwfousCShSJFRTfxFsbrJ4xT7MkCgYBQ\np8TsuHEcWo3jq3HFqH6zrGxinnsPfLLlnyqzOjs9dm6LWtUIuae229bRY1ceaYNI\na6prKuHW99uFLmWE1RhHSm/nR8dkl7KJH6IMO8hYGiMQKYeWPnrW1vmVQkMdcY3Z\nKoZ8pSRKjO0MdCo8LwCvuMeGEC1uGYEybsEeyiW8AQKBgBnkExWeD6KQQL9rrImq\nwhPqz9yuMpIsBtf93fDLXwmy/0VG9L6uDf/3MKl+RYs4PQGe+QQSmXTgqcbHr5ug\nNEFDDK0C9k0Gd0Zl/Z29H6vZWJH9E4ur/xZToeADc3sQT/Ga78LwF8s5EtOPuGVD\nOyCUoLQJgofJWKk2Tp5gKogB\n-----END PRIVATE KEY-----"

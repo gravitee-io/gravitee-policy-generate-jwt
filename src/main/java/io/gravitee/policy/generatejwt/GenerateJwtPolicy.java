@@ -25,6 +25,7 @@ import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.util.Base64;
+import com.nimbusds.jose.util.Base64URL;
 import com.nimbusds.jose.util.IOUtils;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
@@ -106,6 +107,10 @@ public class GenerateJwtPolicy {
                 signer = getSigner(hash);
 
                 JWSHeader.Builder builder = new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(configuration.getKid());
+                if (configuration.getX5t() != null) {
+                    builder.x509CertThumbprint(new Base64URL(configuration.getX5t()));
+                }
+
                 if (configuration.getX509CertificateChain() == X509CertificateChain.X5C) {
                     builder.x509CertChain(certificateChain);
                 }

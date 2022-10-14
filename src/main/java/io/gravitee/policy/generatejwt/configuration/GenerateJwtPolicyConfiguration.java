@@ -41,6 +41,8 @@ public class GenerateJwtPolicyConfiguration implements PolicyConfiguration {
 
     private String kid;
 
+    private String x5t;
+
     private X509CertificateChain x509CertificateChain = X509CertificateChain.NONE;
 
     private List<String> audiences;
@@ -95,6 +97,14 @@ public class GenerateJwtPolicyConfiguration implements PolicyConfiguration {
 
     public void setAudiences(List<String> audiences) {
         this.audiences = audiences;
+    }
+
+    public String getX5t() {
+        return x5t;
+    }
+
+    public void setX5t(String x5t) {
+        this.x5t = x5t;
     }
 
     public long getExpiresIn() {
