@@ -66,8 +66,8 @@
     },
     "x5t" : {
         "type" : "string",
-        "title": "Certificate Fingerprint (SHA1)",
-        "description": "Specifies the certificate fingerprint (SHA1) value, which will be Base64 URL encoded as x5t in the JWT header"
+        "title": "JWT x5t",
+        "description": "Specifies the x5t header value, which need to be a Base64 URL encoding of the certificate SHA-1 fingerprint"
     },
     "x509CertificateChain": {
       "title": "Certificate chain",
