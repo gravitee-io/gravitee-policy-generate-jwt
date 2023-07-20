@@ -1,3 +1,10 @@
+## [1.6.1](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.6.0...1.6.1) (2023-07-20)
+
+
+### Bug Fixes
+
+* update policy description ([94f720f](https://github.com/gravitee-io/gravitee-policy-generate-jwt/commit/94f720fb1dfe72e07332c6ec614be11ba2fe0d64))
+
 # [1.6.0](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.5.0...1.6.0) (2023-07-05)
 
 
