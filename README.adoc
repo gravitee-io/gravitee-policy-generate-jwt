@@ -31,6 +31,14 @@ to backend targets, or used in some other way.
 
 When a signed JWT is generated, it is put in the `jwt.generated` attribute of the request execution context.
 
+== Compatibility with APIM
+
+|===
+| Plugin version | APIM version
+
+| Up to 1.x                   | All
+|===
+
 == Configuration
 
 |===
