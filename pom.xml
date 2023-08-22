@@ -36,7 +36,7 @@
     <properties>
         <gravitee-bom.version>5.0.0</gravitee-bom.version>
         <gravitee-gateway-api.version>1.20.1</gravitee-gateway-api.version>
-        <gravitee-policy-api.version>1.7.0</gravitee-policy-api.version>
+        <gravitee-policy-api.version>1.11.0</gravitee-policy-api.version>
         <gravitee-common.version>1.16.2</gravitee-common.version>
         <nimbus-jose-jwt.version>7.2.1</nimbus-jose-jwt.version>
         <guava.version>26.0-jre</guava.version>
