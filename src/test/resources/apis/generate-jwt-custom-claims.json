@@ -1,0 +1,70 @@
+{
+  "id": "my-api",
+  "name": "my-api",
+  "gravitee": "2.0.0",
+  "proxy": {
+    "context_path": "/test",
+    "endpoints": [
+      {
+        "name": "default",
+        "target": "http://localhost:8080/endpoint",
+        "http": {
+          "connectTimeout": 3000,
+          "readTimeout": 60000
+        }
+      }
+    ]
+  },
+  "flows": [
+    {
+      "name": "flow-1",
+      "methods": [
+        "GET"
+      ],
+      "enabled": true,
+      "path-operator": {
+        "path": "/",
+        "operator": "STARTS_WITH"
+      },
+      "pre": [
+        {
+          "name": "Generate JWT",
+          "description": "",
+          "enabled": true,
+          "policy": "policy-generate-jwt",
+          "configuration": {
+            "signature": "HMAC_HS256",
+            "expiresIn": 30,
+            "expiresInUnit": "SECONDS",
+            "issuer": "urn://gravitee-api-gw",
+            "audiences": [
+              "graviteeam"
+            ],
+            "customClaims": [
+              {
+                "name": "claim1",
+                "value": "claim1-value"
+              },
+              {
+                "name": "claim2",
+                "value": "{#request.path}"
+              }
+            ],
+            "id": "817c6cfa-6ae6-446e-a631-5ded215b404b",
+            "kid": "my-kid",
+            "content": "�\u001B�����\u001A\\:w�J�ӵ\u001F/\t\u0017\u000B�j\u001775d�=�F+"
+          }
+        },
+        {
+          "name": "Generate JWT",
+          "description": "",
+          "enabled": true,
+          "policy": "jwt-attributes-to-headers",
+          "configuration": {
+          }
+        }
+      ],
+      "post": []
+    }
+  ]
+}
