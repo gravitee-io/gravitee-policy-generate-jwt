@@ -38,6 +38,7 @@ import io.gravitee.policy.api.annotations.OnRequest;
 import io.gravitee.policy.generatejwt.alg.Signature;
 import io.gravitee.policy.generatejwt.configuration.GenerateJwtPolicyConfiguration;
 import io.gravitee.policy.generatejwt.configuration.X509CertificateChain;
+import jakarta.xml.bind.DatatypeConverter;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
@@ -56,7 +57,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import javax.xml.bind.DatatypeConverter;
 
 /**
  * @author David BRASSELY (david.brassely at graviteesource.com)
