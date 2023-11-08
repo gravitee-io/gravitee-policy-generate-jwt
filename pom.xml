@@ -40,6 +40,7 @@
         <gravitee-common.version>1.16.2</gravitee-common.version>
         <nimbus-jose-jwt.version>7.2.1</nimbus-jose-jwt.version>
         <guava.version>26.0-jre</guava.version>
+        <bcpkix-jdk15on.version>1.70</bcpkix-jdk15on.version>
 
         <properties-maven-plugin.version>1.2.1</properties-maven-plugin.version>
         <maven-assembly-plugin.version>3.6.0</maven-assembly-plugin.version>
@@ -104,7 +105,7 @@
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcpkix-jdk15on</artifactId>
-            <version>1.61</version>
+            <version>${bcpkix-jdk15on.version}</version>
             <scope>test</scope>
         </dependency>
 
