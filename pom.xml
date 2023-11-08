@@ -25,7 +25,7 @@
     <version>1.7.0</version>
 
     <name>Gravitee.io APIM - Policy - Generate JWT</name>
-    <description>Generate a signed JWT Gravitee with a configurable set of claims.</description>
+    <description>Generate a signed JWT token with a configurable set of claims.</description>
 
     <parent>
         <groupId>io.gravitee</groupId>
@@ -34,13 +34,16 @@
     </parent>
 
     <properties>
-        <gravitee-bom.version>5.0.0</gravitee-bom.version>
-        <gravitee-gateway-api.version>2.0.1</gravitee-gateway-api.version>
+        <gravitee-bom.version>6.0.16</gravitee-bom.version>
+        <gravitee-gateway-api.version>3.2.1</gravitee-gateway-api.version>
         <gravitee-policy-api.version>1.11.0</gravitee-policy-api.version>
         <gravitee-common.version>2.3.0</gravitee-common.version>
         <nimbus-jose-jwt.version>9.31</nimbus-jose-jwt.version>
-        <bcpkix-jdk15on.version>1.70</bcpkix-jdk15on.version>
         <jakarta.xml.bind-api.version>3.0.1</jakarta.xml.bind-api.version>
+
+        <!-- Test dependencies -->
+        <bcpkix-jdk15on.version>1.70</bcpkix-jdk15on.version>
+        <gravitee-apim-gateway-tests-sdk.version>4.0.10</gravitee-apim-gateway-tests-sdk.version>
 
         <properties-maven-plugin.version>1.2.1</properties-maven-plugin.version>
         <maven-assembly-plugin.version>3.6.0</maven-assembly-plugin.version>
@@ -100,17 +103,23 @@
         </dependency>
 
         <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.gravitee.apim.gateway</groupId>
+            <artifactId>gravitee-apim-gateway-tests-sdk</artifactId>
+            <version>${gravitee-apim-gateway-tests-sdk.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcpkix-jdk15on</artifactId>
             <version>${bcpkix-jdk15on.version}</version>
             <scope>test</scope>
-        </dependency>
-
-        <!-- Jackson dependencies -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-            <scope>provided</scope>
         </dependency>
 
         <dependency>
@@ -119,7 +128,6 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- Test scope -->
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
