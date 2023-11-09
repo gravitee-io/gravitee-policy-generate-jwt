@@ -1,7 +1,5 @@
 {
-  "extends": [
-    "config:base"
-  ],
+  "extends": ["config:base"],
   "rebaseWhen": "conflicted",
   "packageRules": [
     {
@@ -16,6 +14,11 @@
       "matchUpdateTypes": ["patch", "minor"],
       "automerge": true,
       "automergeType": "branch",
+      "semanticCommitType": "chore"
+    },
+    {
+      "matchDepTypes": ["provided", "test", "build", "import", "parent"],
+      "matchUpdateTypes": ["major"],
       "semanticCommitType": "chore"
     }
   ]
