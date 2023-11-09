@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.6.1...1.7.0) (2023-11-09)
+
+
+### Features
+
+* add message request phase ([4e28cd6](https://github.com/gravitee-io/gravitee-policy-generate-jwt/commit/4e28cd64830882db18cfd011ea97b76fc7ee16fb))
+
 ## [1.6.1](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.6.0...1.6.1) (2023-07-20)
 
 
