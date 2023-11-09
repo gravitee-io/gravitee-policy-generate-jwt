@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.7.0...1.7.1) (2023-11-09)
+
+
+### Bug Fixes
+
+* move to `jakarta.xml.bind-api` dependency ([a06efb4](https://github.com/gravitee-io/gravitee-policy-generate-jwt/commit/a06efb48fd742f5cd1aed2df187fea174822d031))
+
 # [1.7.0](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.6.1...1.7.0) (2023-11-09)
 
 
