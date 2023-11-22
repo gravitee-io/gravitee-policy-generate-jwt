@@ -1,3 +1,10 @@
+## [1.7.2](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.7.1...1.7.2) (2023-11-22)
+
+
+### Bug Fixes
+
+* update the enum value from "PLAIN" to "PEM" in the schema-form.json ([db8a2ae](https://github.com/gravitee-io/gravitee-policy-generate-jwt/commit/db8a2ae0e38f5b7a185656e7b7d96f2eba1b2c83))
+
 ## [1.7.1](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.7.0...1.7.1) (2023-11-09)
 
 
