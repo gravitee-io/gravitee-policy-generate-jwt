@@ -39,7 +39,7 @@
       "default": "INLINE",
       "enum" : [
         "INLINE",
-        "PLAIN",
+        "PEM",
         "JKS",
         "PKCS12"
       ],
