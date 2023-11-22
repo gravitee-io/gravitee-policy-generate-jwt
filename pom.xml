@@ -22,7 +22,7 @@
 
     <groupId>io.gravitee.policy</groupId>
     <artifactId>gravitee-policy-generate-jwt</artifactId>
-    <version>1.5.1-SNAPSHOT</version>
+    <version>1.5.0</version>
 
     <name>Gravitee.io APIM - Policy - Generate JWT</name>
     <description>Description of the Generate JWT Gravitee Policy</description>
@@ -43,6 +43,9 @@
         <json-schema-generator-maven-plugin.outputDirectory>${project.build.directory}/schemas</json-schema-generator-maven-plugin.outputDirectory>
 
         <maven-assembly-plugin.version>2.5.5</maven-assembly-plugin.version>
+
+        <!-- Property used by the publication job in CI-->
+        <publish-folder-path>graviteeio-apim/plugins/policies</publish-folder-path>
     </properties>
 
     <dependencies>
