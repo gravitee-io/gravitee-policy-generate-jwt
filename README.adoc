@@ -35,8 +35,8 @@ When a signed JWT is generated, it is put in the `jwt.generated` attribute of th
 
 |===
 | Plugin version | APIM version
-
-| Up to 1.x                   | All
+| 1.5.x          | 3.x
+| 1.7.x+         | 4.0 to latest
 |===
 
 == Configuration
