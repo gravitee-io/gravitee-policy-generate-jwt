@@ -1,3 +1,10 @@
+## [1.5.2](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.5.1...1.5.2) (2023-11-23)
+
+
+### Bug Fixes
+
+* downgrade CI Orb to try to fix deployment on Nexus ([4a55d4e](https://github.com/gravitee-io/gravitee-policy-generate-jwt/commit/4a55d4ee3c8cc872d1228bdfd2a7f9c846e18d26))
+
 ## [1.5.1](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.5.0...1.5.1) (2023-11-22)
 
 
