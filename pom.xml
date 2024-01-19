@@ -43,7 +43,7 @@
 
         <!-- Test dependencies -->
         <bcpkix-jdk15on.version>1.70</bcpkix-jdk15on.version>
-        <gravitee-apim-gateway-tests-sdk.version>4.2.0</gravitee-apim-gateway-tests-sdk.version>
+        <gravitee-apim-gateway-tests-sdk.version>4.2.1</gravitee-apim-gateway-tests-sdk.version>
 
         <properties-maven-plugin.version>1.2.1</properties-maven-plugin.version>
         <maven-assembly-plugin.version>3.6.0</maven-assembly-plugin.version>
