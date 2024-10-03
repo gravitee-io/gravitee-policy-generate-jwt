@@ -64,17 +64,38 @@
     "alias" : {
       "type" : "string",
       "title": "Key alias",
-      "description": "Alias used to access a keystore entry. (only for JKS and PKCS#12)"
+      "description": "Alias used to access a keystore entry. (only for JKS and PKCS#12)",
+      "gioConfig": {
+        "displayIf": {
+          "$eq": {
+            "value.keyResolver": ["JKS", "PKCS12"]
+          }
+        }
+      }
     },
     "storepass" : {
       "type" : "string",
       "title": "Store password",
-      "description": "Pass used to access the key store. (only for JKS and PKCS#12)"
+      "description": "Pass used to access the key store. (only for JKS and PKCS#12)",
+      "gioConfig": {
+        "displayIf": {
+          "$eq": {
+            "value.keyResolver": ["JKS", "PKCS12"]
+          }
+        }
+      }
     },
     "keypass" : {
       "type" : "string",
       "title": "Key password",
-      "description": "Pass used to access the particular key pair's private key. (only for JKS)"
+      "description": "Pass used to access the particular key pair's private key. (only for JKS)",
+      "gioConfig": {
+        "displayIf": {
+          "$eq": {
+            "value.keyResolver": ["JKS"]
+          }
+        }
+      }
     },
     "kid" : {
       "type" : "string",
@@ -163,10 +184,18 @@
           "allowDropFileTypes": true
         }
       },
-      "format": "gio-code-editor",
+      "format": "gio-code-editor"
+    },
+    "secretBase64Encoded": {
+        "type" : "boolean",
+        "title": "Secret base64 encoded",
+        "description": "Whether the secret key is base64 encoded. (only for HMAC algorithms)",
+        "default": false,
       "gioConfig": {
-        "monacoEditorConfig": {
-          "language": "json"
+        "displayIf": {
+          "$eq": {
+            "value.signature": ["HMAC_HS256", "HMAC_HS384", "HMAC_HS512"]
+          }
         }
       }
     },

@@ -17,6 +17,7 @@ package io.gravitee.policy.generatejwt;
 
 import static java.security.KeyStore.*;
 
+import com.google.common.primitives.Bytes;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.JWSSigner;
@@ -43,6 +44,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.MessageDigest;
@@ -117,7 +119,11 @@ public class GenerateJwtPolicy {
             ) {
                 jwsHeader = new JWSHeader.Builder(configuration.getSignature().getAlg()).keyID(configuration.getKid()).build();
 
-                signer = new MACSigner(configuration.getContent());
+                if (configuration.getSecretBase64Encoded()) {
+                    signer = new MACSigner(java.util.Base64.getDecoder().decode(configuration.getContent()));
+                } else {
+                    signer = new MACSigner(configuration.getContent().getBytes(StandardCharsets.UTF_8));
+                }
             }
 
             JWTClaimsSet claimsSet = buildClaims(executionContext);
