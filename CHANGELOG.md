@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.7.2...1.8.0) (2024-10-07)
+
+
+### Features
+
+* add secretBase64Encoded for HMAC algorithms ([dd9cfc9](https://github.com/gravitee-io/gravitee-policy-generate-jwt/commit/dd9cfc95010952092fb4875f6c536b405e2bdd3a))
+
 ## [1.7.2](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.7.1...1.7.2) (2023-11-22)
 
 
