@@ -38,7 +38,7 @@
         <gravitee-gateway-api.version>3.8.1</gravitee-gateway-api.version>
         <gravitee-policy-api.version>1.11.0</gravitee-policy-api.version>
         <gravitee-common.version>2.3.0</gravitee-common.version>
-        <nimbus-jose-jwt.version>9.48</nimbus-jose-jwt.version>
+        <nimbus-jose-jwt.version>10.5</nimbus-jose-jwt.version>
         <jakarta.xml.bind-api.version>3.0.1</jakarta.xml.bind-api.version>
 
         <!-- Test dependencies -->
