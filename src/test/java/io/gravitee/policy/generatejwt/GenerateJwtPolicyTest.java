@@ -131,6 +131,36 @@ public class GenerateJwtPolicyTest {
     }
 
     @Test
+    public void shouldFail_whenKeyMaterialUnreadable() throws Exception {
+        String missingPemFilePath = new File("target/does-not-exist/missing-signing-key.pem").getAbsolutePath();
+        GenerateJwtPolicyConfiguration ioErrorConfiguration = mock(GenerateJwtPolicyConfiguration.class);
+        when(ioErrorConfiguration.getKeyResolver()).thenReturn(KeyResolver.PEM);
+        when(ioErrorConfiguration.getContent()).thenReturn(missingPemFilePath);
+        PolicyChain ioErrorPolicyChain = mock(PolicyChain.class);
+
+        new GenerateJwtPolicy(ioErrorConfiguration).onRequest(request, response, executionContext, ioErrorPolicyChain);
+
+        verify(ioErrorPolicyChain, times(1)).failWith(any(PolicyResult.class));
+    }
+
+    @Test
+    public void shouldFail_whenSigningSecretTooShort() throws Exception {
+        String tooShortHmacSecret = "too-short-secret";
+        GenerateJwtPolicyConfiguration signingErrorConfiguration = mock(GenerateJwtPolicyConfiguration.class);
+        when(signingErrorConfiguration.getKeyResolver()).thenReturn(KeyResolver.INLINE);
+        when(signingErrorConfiguration.getSignature()).thenReturn(Signature.HMAC_HS256);
+        when(signingErrorConfiguration.getSecretBase64Encoded()).thenReturn(false);
+        when(signingErrorConfiguration.getContent()).thenReturn(tooShortHmacSecret);
+        PolicyChain signingErrorPolicyChain = mock(PolicyChain.class);
+
+        new GenerateJwtPolicy(signingErrorConfiguration).onRequest(request, response, executionContext, signingErrorPolicyChain);
+
+        verify(signingErrorPolicyChain, times(1)).failWith(any(PolicyResult.class));
+        verify(signingErrorPolicyChain, never()).doNext(request, response);
+        verify(executionContext, never()).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), any());
+    }
+
+    @Test
     public void shouldSuccess_rs256_withEmptyKid() throws Exception {
         when(configuration.getContent()).thenReturn(loadResource("/priv.pem"));
 
@@ -286,11 +316,13 @@ public class GenerateJwtPolicyTest {
         verify(policyChain, times(1)).failWith(any(PolicyResult.class));
     }
 
+    // Alias here is intentionally wrong: a null storepass makes KeyStore.getEntry() throw before the alias is ever consulted, so this still pins the empty-storepass failure, not alias lookup.
     @Test
     public void shouldFail_jksResolver_emptyStorepass() throws Exception {
         when(configuration.getKeyResolver()).thenReturn(KeyResolver.JKS);
         when(configuration.getKid()).thenReturn("my-kid");
-        when(configuration.getAlias()).thenReturn("graviteeio");
+        when(configuration.getAlias()).thenReturn("graviteeio-without-storepass");
+        when(configuration.getKeypass()).thenReturn("graviteeio.my.keypass");
 
         when(configuration.getContent()).thenReturn(getFile("/graviteeio.jks"));
 

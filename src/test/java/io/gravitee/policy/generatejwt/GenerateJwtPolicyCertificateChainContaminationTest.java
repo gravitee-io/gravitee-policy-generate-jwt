@@ -31,10 +31,12 @@ import io.gravitee.policy.generatejwt.configuration.KeyResolver;
 import io.gravitee.policy.generatejwt.configuration.X509CertificateChain;
 import java.io.File;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.KeyStore;
 import java.security.cert.Certificate;
 import java.util.List;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
@@ -58,15 +60,6 @@ class GenerateJwtPolicyCertificateChainContaminationTest {
     @BeforeEach
     void init() {
         MockitoAnnotations.openMocks(this);
-
-        GenerateJwtPolicy.signers.clear();
-        GenerateJwtPolicy.certChains.clear();
-    }
-
-    @AfterEach
-    void cleanup() {
-        GenerateJwtPolicy.signers.clear();
-        GenerateJwtPolicy.certChains.clear();
     }
 
     @Test
@@ -79,11 +72,21 @@ class GenerateJwtPolicyCertificateChainContaminationTest {
 
         assertThat(x5cA1).as("pre-condition: JKS and PKCS12 keystores must carry distinct certs").isNotEqualTo(x5cB);
 
-        Base64 expectedLeaf = leafCertFromKeystore("/graviteeio.jks", "graviteeio", "graviteeio.my.storepass");
+        Base64 expectedLeaf = leafCertFromKeystore("JKS", "/graviteeio.jks", "graviteeio", "graviteeio.my.storepass");
         assertThat(x5cA1.get(0)).as("API-A x5c leaf must match the certificate loaded from graviteeio.jks").isEqualTo(expectedLeaf);
 
         List<Base64> x5cA2 = extractX5c(policyA);
         assertThat(x5cA2).as("API-A x5c must remain stable after API-B initialises").isEqualTo(x5cA1);
+    }
+
+    @Test
+    void x5cHeader_forPkcs12Resolver_shouldMatchKeystoreLeafCertificate() throws Exception {
+        GenerateJwtPolicy policy = new GenerateJwtPolicy(newPkcs12Config());
+
+        List<Base64> x5c = extractX5c(policy);
+
+        Base64 expectedLeaf = leafCertFromKeystore("PKCS12", "/graviteeio.p12", "graviteeio", "graviteeio.my.storepass");
+        assertThat(x5c.get(0)).as("PKCS12 x5c leaf must match the certificate loaded from graviteeio.p12").isEqualTo(expectedLeaf);
     }
 
     private List<Base64> extractX5c(GenerateJwtPolicy policy) throws Exception {
@@ -98,8 +101,8 @@ class GenerateJwtPolicyCertificateChainContaminationTest {
         return SignedJWT.parse(jwtCaptor.getValue()).getHeader().getX509CertChain();
     }
 
-    private Base64 leafCertFromKeystore(String resource, String alias, String storepass) throws Exception {
-        KeyStore keyStore = KeyStore.getInstance("JKS");
+    private Base64 leafCertFromKeystore(String type, String resource, String alias, String storepass) throws Exception {
+        KeyStore keyStore = KeyStore.getInstance(type);
         try (InputStream in = GenerateJwtPolicy.class.getResourceAsStream(resource)) {
             keyStore.load(in, storepass.toCharArray());
         }
@@ -113,7 +116,7 @@ class GenerateJwtPolicyCertificateChainContaminationTest {
         when(config.getAlias()).thenReturn("graviteeio");
         when(config.getStorepass()).thenReturn("graviteeio.my.storepass");
         when(config.getKeypass()).thenReturn("graviteeio.my.keypass");
-        when(config.getContent()).thenReturn(getFile("/graviteeio.jks"));
+        when(config.getContent()).thenReturn(uniqueCopy("/graviteeio.jks", ".jks"));
         when(config.getX509CertificateChain()).thenReturn(X509CertificateChain.X5C);
         return config;
     }
@@ -123,12 +126,18 @@ class GenerateJwtPolicyCertificateChainContaminationTest {
         when(config.getKeyResolver()).thenReturn(KeyResolver.PKCS12);
         when(config.getAlias()).thenReturn("graviteeio");
         when(config.getStorepass()).thenReturn("graviteeio.my.storepass");
-        when(config.getContent()).thenReturn(getFile("/graviteeio.p12"));
+        when(config.getContent()).thenReturn(uniqueCopy("/graviteeio.p12", ".p12"));
         when(config.getX509CertificateChain()).thenReturn(X509CertificateChain.X5C);
         return config;
     }
 
-    private String getFile(String resource) throws Exception {
-        return new File(GenerateJwtPolicy.class.getResource(resource).toURI()).getCanonicalPath();
+    // No static-cache clear needed: routing content through uniqueCopy() gives every config a
+    // fresh randomized cache key, so a test can never collide with another test's signer-cache entry.
+    private String uniqueCopy(String resource, String suffix) throws Exception {
+        Path source = new File(GenerateJwtPolicy.class.getResource(resource).toURI()).toPath();
+        Path target = Files.createTempFile("contamination-", suffix);
+        target.toFile().deleteOnExit();
+        Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+        return target.toAbsolutePath().toString();
     }
 }
