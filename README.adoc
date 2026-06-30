@@ -80,6 +80,18 @@ When a signed JWT is generated, it is put in the `jwt.generated` attribute of th
 ^.^|string
 ^.^|-
 
+.^|x509CertificateChain
+^.^|-
+|Whether the X.509 certificate chain of the signing certificate should be added as an x5c header. Only applies when using an RSA signature; if enabled without a resolvable certificate/chain in the key material, all requests are rejected with a 500. Ignored when using an HMAC algorithm.
+^.^|NONE, X5C
+^.^|NONE
+
+.^|x509CertSha1Thumbprint
+^.^|-
+|Whether the SHA-1 thumbprint of the signing certificate should be added as an x5t header. Only applies when using an RSA signature; if enabled without a resolvable certificate in the key material, all requests are rejected with a 500. Ignored when using an HMAC algorithm.
+^.^|boolean
+^.^|false
+
 |===
 
 == Attributes

@@ -27,10 +27,7 @@ public class GenerateJwtPolicyConfigurationTest {
 
     @Test
     public void shouldGetDefaultValues() throws IOException {
-        GenerateJwtPolicyConfiguration configuration = load(
-            "/io/gravitee/policy/generatejwt/configuration/generatejwt01.json",
-            GenerateJwtPolicyConfiguration.class
-        );
+        GenerateJwtPolicyConfiguration configuration = load("/configuration/generatejwt01.json", GenerateJwtPolicyConfiguration.class);
 
         Assert.assertNotNull(configuration);
 
@@ -40,14 +37,21 @@ public class GenerateJwtPolicyConfigurationTest {
         Assert.assertEquals("urn://gravitee-api-gw", configuration.getIssuer());
         Assert.assertNull(configuration.getCustomClaims());
         Assert.assertEquals(KeyResolver.INLINE, configuration.getKeyResolver());
+        Assert.assertFalse(configuration.isX509CertSha1Thumbprint());
+    }
+
+    @Test
+    public void shouldReadX509CertSha1Thumbprint() throws IOException {
+        GenerateJwtPolicyConfiguration configuration = load("/configuration/generatejwt03.json", GenerateJwtPolicyConfiguration.class);
+
+        Assert.assertNotNull(configuration);
+
+        Assert.assertTrue(configuration.isX509CertSha1Thumbprint());
     }
 
     @Test
     public void shouldGetDefaultValues_withIssuer() throws IOException {
-        GenerateJwtPolicyConfiguration configuration = load(
-            "/io/gravitee/policy/generatejwt/configuration/generatejwt02.json",
-            GenerateJwtPolicyConfiguration.class
-        );
+        GenerateJwtPolicyConfiguration configuration = load("/configuration/generatejwt02.json", GenerateJwtPolicyConfiguration.class);
 
         Assert.assertNotNull(configuration);
 

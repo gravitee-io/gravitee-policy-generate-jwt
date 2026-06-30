@@ -104,7 +104,7 @@
     },
     "x509CertificateChain": {
       "title": "Certificate chain",
-      "description": "Whether a certificate chain should be added as an X5C attribute. (only for RS256, JKS and PKCS#12)",
+      "description": "Whether a certificate chain should be added as an X5C attribute. (only for RS256)",
       "type" : "string",
       "default": "NONE",
       "enum" : [
@@ -116,12 +116,46 @@
         "titleMap": {
           "NONE": "Do not add a certificate chain",
           "X5C": "Add a certificate chain as an X5C attribute"
-        }
+        },
+        "disabled": [
+          {
+            "$eq": {
+              "signature": ["HMAC_HS256", "HMAC_HS384", "HMAC_HS512"]
+            }
+          }
+        ]
       },
       "gioConfig": {
         "enumLabelMap": {
           "NONE": "Do not add a certificate chain",
           "X5C": "Add a certificate chain as an X5C attribute"
+        },
+        "disableIf": {
+          "$eq": {
+            "value.signature": ["HMAC_HS256", "HMAC_HS384", "HMAC_HS512"]
+          }
+        }
+      }
+    },
+    "x509CertSha1Thumbprint": {
+      "type" : "boolean",
+      "title": "Include x5t (SHA-1 certificate thumbprint)",
+      "description": "Whether the SHA-1 thumbprint of the signing certificate should be added as an x5t header. (only for RS256)",
+      "default": false,
+      "x-schema-form": {
+        "disabled": [
+          {
+            "$eq": {
+              "signature": ["HMAC_HS256", "HMAC_HS384", "HMAC_HS512"]
+            }
+          }
+        ]
+      },
+      "gioConfig": {
+        "disableIf": {
+          "$eq": {
+            "value.signature": ["HMAC_HS256", "HMAC_HS384", "HMAC_HS512"]
+          }
         }
       }
     },
