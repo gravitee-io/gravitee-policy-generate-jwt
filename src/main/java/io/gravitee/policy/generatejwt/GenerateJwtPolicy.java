@@ -52,19 +52,22 @@ import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateEncodingException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author David BRASSELY (david.brassely at graviteesource.com)
  * @author GraviteeSource Team
  */
 public class GenerateJwtPolicy {
+
+    private static final Logger log = LoggerFactory.getLogger(GenerateJwtPolicy.class);
 
     /**
      * Request attributes
@@ -80,12 +83,9 @@ public class GenerateJwtPolicy {
      * The key is the reference to the file.
      * The value is the loaded signer.
      */
-    private static final Map<String, RSASSASigner> signers = new HashMap<>();
+    static final Map<String, RSASSASigner> signers = new ConcurrentHashMap<>();
 
-    /**
-     * The encoded certificate chain used for the x5c header
-     */
-    private static List<Base64> certificateChain = new ArrayList<>();
+    static final Map<String, List<Base64>> certChains = new ConcurrentHashMap<>();
 
     /**
      * Create a new Generate JWT Policy instance based on its associated configuration
@@ -109,7 +109,7 @@ public class GenerateJwtPolicy {
 
                 JWSHeader.Builder builder = new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(configuration.getKid());
                 if (configuration.getX509CertificateChain() == X509CertificateChain.X5C) {
-                    builder.x509CertChain(certificateChain);
+                    builder.x509CertChain(certChains.get(hash));
                 }
                 jwsHeader = builder.build();
             } else if (
@@ -136,6 +136,7 @@ public class GenerateJwtPolicy {
 
             policyChain.doNext(request, response);
         } catch (Exception ex) {
+            log.error("Unable to generate JWT token", ex);
             policyChain.failWith(PolicyResult.failure("Unable to generate JWT token: " + ex.getMessage()));
         }
     }
@@ -155,7 +156,7 @@ public class GenerateJwtPolicy {
 
                     if (configuration.getStorepass() != null) {
                         keyStore.load(readFile(), configuration.getStorepass().toCharArray());
-                        addCertificateChain(keyStore, configuration);
+                        addCertificateChain(hash, keyStore, configuration);
                     }
 
                     KeyStore.PrivateKeyEntry pkEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(
@@ -170,7 +171,7 @@ public class GenerateJwtPolicy {
 
                     if (configuration.getStorepass() != null) {
                         keyStore.load(readFile(), configuration.getStorepass().toCharArray());
-                        addCertificateChain(keyStore, configuration);
+                        addCertificateChain(hash, keyStore, configuration);
                     }
 
                     pkEntry =
@@ -196,8 +197,10 @@ public class GenerateJwtPolicy {
         return signer;
     }
 
-    private void addCertificateChain(KeyStore keyStore, GenerateJwtPolicyConfiguration configuration) throws KeyStoreException {
-        certificateChain =
+    private void addCertificateChain(String hash, KeyStore keyStore, GenerateJwtPolicyConfiguration configuration)
+        throws KeyStoreException {
+        certChains.put(
+            hash,
             Arrays
                 .stream(keyStore.getCertificateChain(configuration.getAlias()))
                 .map(c -> {
@@ -207,7 +210,8 @@ public class GenerateJwtPolicy {
                         throw new IllegalArgumentException("Failed to encode certificate.", ex);
                     }
                 })
-                .collect(Collectors.toList());
+                .collect(Collectors.toList())
+        );
     }
 
     private JWTClaimsSet buildClaims(ExecutionContext executionContext) {
