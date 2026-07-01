@@ -1,3 +1,10 @@
+## [1.8.1](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.8.0...1.8.1) (2026-07-01)
+
+
+### Bug Fixes
+
+* run legacy JUnit4 tests via junit-vintage-engine ([#83](https://github.com/gravitee-io/gravitee-policy-generate-jwt/issues/83)) ([345a533](https://github.com/gravitee-io/gravitee-policy-generate-jwt/commit/345a53375a865a698ca65f55a30d95196c682d6c))
+
 # [1.8.0](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.7.2...1.8.0) (2024-10-07)
 
 
