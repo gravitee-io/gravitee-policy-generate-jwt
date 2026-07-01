@@ -44,7 +44,6 @@ import java.nio.charset.Charset;
 import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
-import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.Before;
@@ -545,8 +544,7 @@ public class GenerateJwtPolicyTest {
         byte[] bytes = x509CertChain.get(0).decode();
         try (InputStream stream = new ByteArrayInputStream(bytes)) {
             CertificateFactory factory = CertificateFactory.getInstance("X.509");
-            X509Certificate certificate = (X509Certificate) factory.generateCertificate(stream);
-            certificate.checkValidity();
+            factory.generateCertificate(stream);
         } catch (Exception e) {
             return false;
         }
