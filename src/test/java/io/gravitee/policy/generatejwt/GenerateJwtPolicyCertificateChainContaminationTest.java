@@ -34,6 +34,7 @@ import java.io.InputStream;
 import java.security.KeyStore;
 import java.security.cert.Certificate;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
@@ -58,6 +59,12 @@ class GenerateJwtPolicyCertificateChainContaminationTest {
     void init() {
         MockitoAnnotations.openMocks(this);
 
+        GenerateJwtPolicy.signers.clear();
+        GenerateJwtPolicy.certChains.clear();
+    }
+
+    @AfterEach
+    void cleanup() {
         GenerateJwtPolicy.signers.clear();
         GenerateJwtPolicy.certChains.clear();
     }
