@@ -1,3 +1,10 @@
+## [1.8.2](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.8.1...1.8.2) (2026-07-03)
+
+
+### Bug Fixes
+
+* prevent cross-API x5c certificate chain contamination ([8dcc7af](https://github.com/gravitee-io/gravitee-policy-generate-jwt/commit/8dcc7af6ab6a0bdf525bf5e1ba20dbcc89e201bd))
+
 ## [1.8.1](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.8.0...1.8.1) (2026-07-01)
 
 
