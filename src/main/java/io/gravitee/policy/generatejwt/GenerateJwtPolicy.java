@@ -109,7 +109,10 @@ public class GenerateJwtPolicy {
 
                 JWSHeader.Builder builder = new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(configuration.getKid());
                 if (configuration.getX509CertificateChain() == X509CertificateChain.X5C) {
-                    builder.x509CertChain(certChains.get(hash));
+                    List<Base64> chain = certChains.get(hash);
+                    if (chain != null) {
+                        builder.x509CertChain(chain);
+                    }
                 }
                 jwsHeader = builder.build();
             } else if (
