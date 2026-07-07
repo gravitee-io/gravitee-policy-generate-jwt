@@ -1,3 +1,10 @@
+## [1.8.3](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.8.2...1.8.3) (2026-07-07)
+
+
+### Bug Fixes
+
+* key the signer/certificate caches by resolver, content, and alias ([15d473c](https://github.com/gravitee-io/gravitee-policy-generate-jwt/commit/15d473c54660179d5d59dbebbb572ec2531e3ba7))
+
 ## [1.8.2](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.8.1...1.8.2) (2026-07-03)
 
 
