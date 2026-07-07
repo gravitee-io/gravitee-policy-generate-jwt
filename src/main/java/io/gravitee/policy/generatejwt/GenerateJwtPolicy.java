@@ -103,7 +103,7 @@ public class GenerateJwtPolicy {
             JWSHeader jwsHeader = null;
 
             if (configuration.getSignature() == null || configuration.getSignature() == Signature.RSA_RS256) {
-                String hash = sha1(configuration.getContent());
+                String hash = sha1(cacheKeyMaterial());
 
                 signer = getSigner(hash);
 
@@ -293,11 +293,23 @@ public class GenerateJwtPolicy {
         return new FileInputStream(configuration.getContent());
     }
 
+    /**
+     * Identifies the resolved key material; sha1() of this is the actual signer/certificate cache
+     * key. Must include the key resolver and alias, not just content, since a single keystore file
+     * can hold multiple aliases.
+     */
+    private String cacheKeyMaterial() {
+        String keyResolver = configuration.getKeyResolver() == null ? "" : configuration.getKeyResolver().name();
+        String content = configuration.getContent() == null ? "" : configuration.getContent();
+        String alias = configuration.getAlias() == null ? "" : configuration.getAlias();
+        return sha1(keyResolver) + "." + sha1(content) + "." + sha1(alias);
+    }
+
     public String sha1(String input) {
         String sha1 = null;
         try {
             MessageDigest msdDigest = MessageDigest.getInstance("SHA-1");
-            msdDigest.update(input.getBytes(Charset.defaultCharset()), 0, input.length());
+            msdDigest.update(input.getBytes(StandardCharsets.UTF_8));
             sha1 = DatatypeConverter.printHexBinary(msdDigest.digest());
         } catch (NoSuchAlgorithmException ignored) {}
         return sha1;
