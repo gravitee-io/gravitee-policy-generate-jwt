@@ -15,6 +15,8 @@
  */
 package io.gravitee.policy.generatejwt;
 
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assume.assumeTrue;
 import static org.mockito.Mockito.*;
 
 import com.nimbusds.jose.JWSAlgorithm;
@@ -538,6 +540,28 @@ public class GenerateJwtPolicyTest {
                     }
                 )
             );
+    }
+
+    @Test
+    public void shouldGenerateDifferentSha1_whenInputsDifferOnlyPastMultibyteCharCount() {
+        // The pre-fix sha1() hashed input.getBytes(Charset.defaultCharset()) truncated to
+        // input.length() (a UTF-16 char count wrongly used as a byte count). This regression
+        // reproduces that truncation under the JVM's actual default charset: the shared prefix must
+        // occupy at least input.length() bytes so the truncated digest never reaches the trailing
+        // character where the two inputs differ, forcing a collision on the buggy code.
+        Charset defaultCharset = Charset.defaultCharset();
+        String prefix = "ééééé";
+        String input1 = prefix + "A";
+        String input2 = prefix + "B";
+
+        assumeTrue(
+            "default charset " + defaultCharset + " encodes the prefix single-byte; truncation bug is unreproducible here",
+            prefix.getBytes(defaultCharset).length >= input1.length()
+        );
+
+        String sha1 = new GenerateJwtPolicy(configuration).sha1(input1);
+
+        assertNotEquals(sha1, new GenerateJwtPolicy(configuration).sha1(input2));
     }
 
     private boolean hasValidX509CertificateChain(final List<Base64> x509CertChain) {
