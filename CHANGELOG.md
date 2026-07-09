@@ -1,3 +1,10 @@
+# [1.9.0-alpha.1](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.8.1...1.9.0-alpha.1) (2026-07-09)
+
+
+### Features
+
+* add x5t certificate thumbprint support ([a84d32b](https://github.com/gravitee-io/gravitee-policy-generate-jwt/commit/a84d32b755161f2a63cf3eedd3decc4af55f00d0))
+
 ## [1.8.2](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.8.1...1.8.2) (2026-07-03)
 
 
