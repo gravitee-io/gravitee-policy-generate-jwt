@@ -41,9 +41,9 @@ import io.gravitee.policy.api.PolicyResult;
 import io.gravitee.policy.api.annotations.OnRequest;
 import io.gravitee.policy.generatejwt.alg.Signature;
 import io.gravitee.policy.generatejwt.configuration.GenerateJwtPolicyConfiguration;
-import io.gravitee.policy.generatejwt.configuration.KeyResolver;
 import io.gravitee.policy.generatejwt.configuration.X509CertificateChain;
 import jakarta.xml.bind.DatatypeConverter;
+import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -55,9 +55,11 @@ import java.security.KeyStoreException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPrivateCrtKey;
 import java.security.interfaces.RSAPublicKey;
@@ -67,7 +69,11 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.security.auth.x500.X500Principal;
@@ -87,36 +93,44 @@ public class GenerateJwtPolicy {
      */
     static final String CONTEXT_ATTRIBUTE_JWT_GENERATED = "jwt.generated";
 
+    private static final String JWT_GENERATION_FAILURE_MESSAGE = "Unable to generate JWT token";
+
     /**
      * The associated configuration to this Generate JWT Policy
      */
     private final GenerateJwtPolicyConfiguration configuration;
 
     /**
-     * The key is sha1(keyResolver name + content + alias).
+     * The key is cacheKeyMaterial(): sha1(keyResolver) + "." + sha1(content) + "." + sha1(alias).
      * The value is the RSA signer resolved from that key material.
      */
     static final Map<String, RSASSASigner> signers = new ConcurrentHashMap<>();
 
     /**
-     * The key is the same content hash used for the signers map.
+     * The key is the same cacheKeyMaterial() key used for the signers map.
      * The value is the X.509 certificate chain used for the x5c header,
      * ordered leaf-first. This map is the only source for the x5c header.
      */
     static final Map<String, List<Base64>> certChains = new ConcurrentHashMap<>();
 
     /**
-     * The key is the same content hash used for the signers map.
+     * The key is the same cacheKeyMaterial() key used for the signers map.
      * The value is the precomputed SHA-1 x5t thumbprint (Base64URL) of the certificate paired with the signing key,
-     * or {@link #NO_LEAF_CERTIFICATE} when the key material carries no such certificate.
+     * or {@link Optional#empty()} when the key material carries no such certificate.
      * This map is the only source for the x5t header; certChains is the only source for x5c.
      */
-    static final Map<String, Base64URL> leafCertificates = new ConcurrentHashMap<>();
+    static final Map<String, Optional<Base64URL>> leafCertificates = new ConcurrentHashMap<>();
 
-    private static final Base64URL NO_LEAF_CERTIFICATE = new Base64URL("");
+    /**
+     * The key is the same cacheKeyMaterial() key used for the signers map.
+     * The value is the precomputed SHA-256 x5t#S256 thumbprint (Base64URL) of the certificate paired with the signing key,
+     * or {@link Optional#empty()} when the key material carries no such certificate.
+     * This map is the only source for the x5t#S256 header.
+     */
+    static final Map<String, Optional<Base64URL>> leafCertificatesSha256 = new ConcurrentHashMap<>();
 
     private static final Pattern CERTIFICATE_PEM_BLOCK = Pattern.compile(
-        "-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----",
+        "-----BEGIN (?:TRUSTED |X509 )?CERTIFICATE-----.*?-----END (?:TRUSTED |X509 )?CERTIFICATE-----",
         Pattern.DOTALL
     );
 
@@ -136,36 +150,14 @@ public class GenerateJwtPolicy {
             JWSHeader jwsHeader = null;
 
             if (configuration.getSignature() == null || configuration.getSignature() == Signature.RSA_RS256) {
-                String hash = sha1(cacheKeyMaterial());
+                String hash = cacheKeyMaterial();
 
                 signer = getSigner(hash);
 
-                JWSHeader.Builder builder = new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(configuration.getKid());
-                if (configuration.getX509CertificateChain() == X509CertificateChain.X5C) {
-                    List<Base64> certChain = certChains.get(hash);
-                    if (certChain == null || certChain.isEmpty()) {
-                        log.error(
-                            "[generate-jwt] x5c certificate chain requested but no certificate chain is available for resolver {} — request rejected.",
-                            configuration.getKeyResolver().name()
-                        );
-                        policyChain.failWith(PolicyResult.failure("Unable to generate JWT token"));
-                        return;
-                    }
-                    builder.x509CertChain(certChain);
+                jwsHeader = buildRsaHeader(hash, policyChain);
+                if (jwsHeader == null) {
+                    return;
                 }
-                if (configuration.isX509CertSha1Thumbprint()) {
-                    Base64URL leafCertificate = leafCertificates.get(hash);
-                    if (leafCertificate == null || leafCertificate.equals(NO_LEAF_CERTIFICATE)) {
-                        log.error(
-                            "[generate-jwt] x5t toggle enabled but no certificate is available for resolver {} — request rejected.",
-                            configuration.getKeyResolver().name()
-                        );
-                        policyChain.failWith(PolicyResult.failure("Unable to generate JWT token"));
-                        return;
-                    }
-                    builder.x509CertThumbprint(leafCertificate);
-                }
-                jwsHeader = builder.build();
             } else if (
                 configuration.getSignature() == Signature.HMAC_HS256 ||
                 configuration.getSignature() == Signature.HMAC_HS384 ||
@@ -191,17 +183,103 @@ public class GenerateJwtPolicy {
             policyChain.doNext(request, response);
         } catch (IOException ex) {
             log.error("Unable to generate JWT token: unable to read key material", ex);
-            policyChain.failWith(PolicyResult.failure("Unable to generate JWT token"));
+            policyChain.failWith(PolicyResult.failure(JWT_GENERATION_FAILURE_MESSAGE));
         } catch (KeyStoreException | CertificateException ex) {
             log.error("Unable to generate JWT token: invalid key material", ex);
-            policyChain.failWith(PolicyResult.failure("Unable to generate JWT token"));
+            policyChain.failWith(PolicyResult.failure(JWT_GENERATION_FAILURE_MESSAGE));
         } catch (JOSEException ex) {
             log.error("Unable to generate JWT token: invalid key material or signing error", ex);
-            policyChain.failWith(PolicyResult.failure("Unable to generate JWT token"));
+            policyChain.failWith(PolicyResult.failure(JWT_GENERATION_FAILURE_MESSAGE));
         } catch (Exception ex) {
-            log.error("Unable to generate JWT token: unexpected error not handled by a dedicated catch", ex);
-            policyChain.failWith(PolicyResult.failure("Unable to generate JWT token"));
+            log.error(
+                "Unable to generate JWT token: UNEXPECTED error not handled by a dedicated catch (exception class: {})",
+                ex.getClass().getName(),
+                ex
+            );
+            policyChain.failWith(PolicyResult.failure(JWT_GENERATION_FAILURE_MESSAGE));
         }
+    }
+
+    private JWSHeader buildRsaHeader(String hash, PolicyChain policyChain) {
+        JWSHeader.Builder builder = new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(configuration.getKid());
+        if (configuration.getX509CertificateChain() == X509CertificateChain.X5C) {
+            List<Base64> certChain = resolveCertChain(hash, policyChain);
+            if (certChain == null) {
+                return null;
+            }
+            builder.x509CertChain(certChain);
+        }
+        if (configuration.isX509CertSha1Thumbprint()) {
+            Base64URL leafCertificate = resolveLeafCertificate(hash, policyChain);
+            if (leafCertificate == null) {
+                return null;
+            }
+            builder.x509CertThumbprint(leafCertificate);
+        }
+        if (configuration.isX509CertSha256Thumbprint()) {
+            Base64URL leafCertificateSha256 = resolveLeafCertificateSha256(hash, policyChain);
+            if (leafCertificateSha256 == null) {
+                return null;
+            }
+            builder.x509CertSHA256Thumbprint(leafCertificateSha256);
+        }
+        return builder.build();
+    }
+
+    private List<Base64> resolveCertChain(String hash, PolicyChain policyChain) {
+        return resolveRequiredHeaderValue(
+            certChains,
+            hash,
+            chain -> !chain.isEmpty(),
+            chain -> chain,
+            "[generate-jwt] x5c certificate chain requested but no certificate chain is available for resolver {} — request rejected.",
+            policyChain
+        );
+    }
+
+    private Base64URL resolveLeafCertificate(String hash, PolicyChain policyChain) {
+        return resolveRequiredHeaderValue(
+            leafCertificates,
+            hash,
+            Optional::isPresent,
+            Optional::get,
+            "[generate-jwt] x5t toggle enabled but no certificate is available for resolver {} — request rejected.",
+            policyChain
+        );
+    }
+
+    private Base64URL resolveLeafCertificateSha256(String hash, PolicyChain policyChain) {
+        return resolveRequiredHeaderValue(
+            leafCertificatesSha256,
+            hash,
+            Optional::isPresent,
+            Optional::get,
+            "[generate-jwt] x5t#S256 toggle enabled but no certificate is available for resolver {} — request rejected.",
+            policyChain
+        );
+    }
+
+    private <V, R> R resolveRequiredHeaderValue(
+        Map<String, V> cache,
+        String hash,
+        Predicate<V> hasValue,
+        Function<V, R> unwrap,
+        String errorMessage,
+        PolicyChain policyChain
+    ) {
+        V cached = cache.get(hash);
+        if (cached == null || !hasValue.test(cached)) {
+            log.error(errorMessage, configuration.getKeyResolver().name());
+            policyChain.failWith(PolicyResult.failure(JWT_GENERATION_FAILURE_MESSAGE));
+            return null;
+        }
+        return unwrap.apply(cached);
+    }
+
+    private static void clearCertificateCaches(String hash) {
+        certChains.put(hash, List.of());
+        leafCertificates.put(hash, Optional.empty());
+        leafCertificatesSha256.put(hash, Optional.empty());
     }
 
     private RSASSASigner getSigner(String hash) throws Exception {
@@ -218,42 +296,26 @@ public class GenerateJwtPolicy {
                     signer = new RSASSASigner(pemKey);
                     break;
                 case JKS:
-                    KeyStore keyStore = getInstance("JKS");
-
-                    if (configuration.getStorepass() != null) {
-                        keyStore.load(readFile(), configuration.getStorepass().toCharArray());
+                case PKCS12:
+                    if (configuration.getStorepass() == null) {
+                        throw new KeyStoreException(
+                            "storepass is required for the " + configuration.getKeyResolver().name() + " key resolver"
+                        );
                     }
 
-                    KeyStore.PrivateKeyEntry pkEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(
+                    var keyStore = getInstance(configuration.getKeyResolver().name());
+                    try (var is = readFile()) {
+                        keyStore.load(is, configuration.getStorepass().toCharArray());
+                    }
+
+                    var pkEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(
                         configuration.getAlias(),
-                        new KeyStore.PasswordProtection(configuration.getKeypass().toCharArray())
+                        new KeyStore.PasswordProtection(resolveKeyEntryPassword())
                     );
 
-                    if (configuration.getStorepass() != null) {
-                        addCertificateChain(hash, keyStore, configuration, pkEntry.getPrivateKey());
-                    }
+                    addCertificateChain(hash, keyStore, pkEntry.getPrivateKey());
 
                     signer = new RSASSASigner(pkEntry.getPrivateKey(), true);
-                    break;
-                case PKCS12:
-                    keyStore = getInstance("PKCS12");
-
-                    if (configuration.getStorepass() != null) {
-                        keyStore.load(readFile(), configuration.getStorepass().toCharArray());
-                    }
-
-                    pkEntry =
-                        (KeyStore.PrivateKeyEntry) keyStore.getEntry(
-                            configuration.getAlias(),
-                            new KeyStore.PasswordProtection(configuration.getStorepass().toCharArray())
-                        );
-
-                    if (configuration.getStorepass() != null) {
-                        addCertificateChain(hash, keyStore, configuration, pkEntry.getPrivateKey());
-                    }
-
-                    signer = new RSASSASigner(pkEntry.getPrivateKey(), true);
-
                     break;
                 case INLINE:
                     RSAKey inlineKey = parseRsaKey(configuration.getContent());
@@ -263,7 +325,8 @@ public class GenerateJwtPolicy {
                     signer = new RSASSASigner(inlineKey);
                     break;
                 default:
-                    break;
+                    log.error("[generate-jwt] Unsupported key resolver {} — cannot resolve signer.", configuration.getKeyResolver().name());
+                    throw new IllegalStateException("Unsupported key resolver: " + configuration.getKeyResolver().name());
             }
 
             signers.put(hash, signer);
@@ -272,46 +335,61 @@ public class GenerateJwtPolicy {
         return signer;
     }
 
+    private char[] resolveKeyEntryPassword() {
+        switch (configuration.getKeyResolver()) {
+            case JKS:
+                return configuration.getKeypass().toCharArray();
+            case PKCS12:
+                return configuration.getStorepass().toCharArray();
+            default:
+                throw new IllegalStateException("Unsupported key resolver for entry password: " + configuration.getKeyResolver().name());
+        }
+    }
+
     private static RSAKey parseRsaKey(String pemContent) throws JOSEException {
         return (RSAKey) JWK.parseFromPEMEncodedObjects(CERTIFICATE_PEM_BLOCK.matcher(pemContent).replaceAll(""));
     }
 
-    private void addCertificateChain(String hash, KeyStore keyStore, GenerateJwtPolicyConfiguration configuration, PrivateKey signingKey)
+    private void logSuppressedChainToggles(String reason) {
+        if (configuration.isX509CertSha1Thumbprint()) {
+            log.error(
+                "[generate-jwt] x5t toggle enabled but {} for resolver {} — thumbprint cannot be computed.",
+                reason,
+                configuration.getKeyResolver().name()
+            );
+        }
+        if (configuration.isX509CertSha256Thumbprint()) {
+            log.error(
+                "[generate-jwt] x5t#S256 toggle enabled but {} for resolver {} — thumbprint cannot be computed.",
+                reason,
+                configuration.getKeyResolver().name()
+            );
+        }
+        if (configuration.getX509CertificateChain() == X509CertificateChain.X5C) {
+            log.error(
+                "[generate-jwt] x5c certificate chain requested but {} for resolver {} — the request will be rejected.",
+                reason,
+                configuration.getKeyResolver().name()
+            );
+        }
+    }
+
+    private void addCertificateChain(String hash, KeyStore keyStore, PrivateKey signingKey)
         throws KeyStoreException, NoSuchAlgorithmException {
         Certificate[] certificateChain = keyStore.getCertificateChain(configuration.getAlias());
         if (certificateChain == null || certificateChain.length == 0) {
-            if (configuration.isX509CertSha1Thumbprint()) {
-                log.error(
-                    "[generate-jwt] x5t toggle enabled but no certificate chain is available for resolver {} — thumbprint cannot be computed.",
-                    configuration.getKeyResolver().name()
-                );
-            }
-            if (configuration.getX509CertificateChain() == X509CertificateChain.X5C) {
-                log.error(
-                    "[generate-jwt] x5c certificate chain requested but no certificate chain is available for resolver {} — the request will be rejected.",
-                    configuration.getKeyResolver().name()
-                );
-            }
-            certChains.put(hash, List.of());
-            leafCertificates.put(hash, NO_LEAF_CERTIFICATE);
+            logSuppressedChainToggles("no certificate chain is available");
+            clearCertificateCaches(hash);
             return;
         }
 
-        if (!leafMatchesSigningKey(certificateChain[0], signingKey)) {
-            if (configuration.isX509CertSha1Thumbprint()) {
-                log.error(
-                    "[generate-jwt] x5t toggle enabled but the keystore certificate chain leaf does not match the signing key for resolver {} — thumbprint cannot be computed.",
-                    configuration.getKeyResolver().name()
-                );
-            }
-            if (configuration.getX509CertificateChain() == X509CertificateChain.X5C) {
-                log.error(
-                    "[generate-jwt] x5c certificate chain requested but the keystore certificate chain leaf does not match the signing key for resolver {} — the request will be rejected.",
-                    configuration.getKeyResolver().name()
-                );
-            }
-            certChains.put(hash, List.of());
-            leafCertificates.put(hash, NO_LEAF_CERTIFICATE);
+        if (leafMatchesSigningKey(certificateChain[0], signingKey, configuration.getKeyResolver().name()) == LeafMatchResult.MISMATCH) {
+            log.warn(
+                "[generate-jwt] keystore certificate chain leaf does not match the signing key for resolver {} — certificate chain will not be embedded.",
+                configuration.getKeyResolver().name()
+            );
+            logSuppressedChainToggles("the keystore certificate chain leaf does not match the signing key");
+            clearCertificateCaches(hash);
             return;
         }
 
@@ -327,57 +405,133 @@ public class GenerateJwtPolicy {
                 configuration.getKeyResolver().name(),
                 ex
             );
-            certChains.put(hash, List.of());
-            leafCertificates.put(hash, NO_LEAF_CERTIFICATE);
+            clearCertificateCaches(hash);
             return;
         }
 
         certChains.put(hash, certChain);
-        leafCertificates.put(hash, computeX5t(certChain.get(0).decode()));
+
+        var decodedCert = certChain.get(0).decode();
+        leafCertificates.put(hash, Optional.of(computeX5t(decodedCert)));
+        leafCertificatesSha256.put(hash, Optional.of(computeX5tS256(decodedCert)));
+    }
+
+    private static final Pattern TRUSTED_CERTIFICATE_BLOCK = Pattern.compile(
+        "-----BEGIN TRUSTED CERTIFICATE-----(.*?)-----END TRUSTED CERTIFICATE-----",
+        Pattern.DOTALL
+    );
+
+    /**
+     * An OpenSSL "trusted certificate" PEM block (as produced by {@code openssl x509 -trustout}) is not just a
+     * mislabeled certificate — its body is the certificate DER followed by a trailing X509_CERT_AUX ASN.1
+     * structure (trust purposes, alias, key id, ...) that a plain X.509 certificate parser does not understand.
+     * Rewrite each such block into a standard CERTIFICATE block containing only the leading certificate DER,
+     * discarding that trailing trust-metadata, so the certificate can be extracted like any other.
+     *
+     * X509 CERTIFICATE-labeled blocks are intentionally not rewritten here: BouncyCastle's PEMParser
+     * (used internally by X509CertChainUtils.parse) maps that label to the same certificate parser
+     * as the standard CERTIFICATE label, so no metadata-stripping is needed — only TRUSTED CERTIFICATE
+     * blocks carry the extra X509_CERT_AUX structure this method exists to strip.
+     */
+    private static String rewriteTrustedCertificateBlocksAsCertificates(String pemContent) throws CertificateException {
+        Matcher matcher = TRUSTED_CERTIFICATE_BLOCK.matcher(pemContent);
+        StringBuilder rewritten = new StringBuilder();
+        int lastEnd = 0;
+        while (matcher.find()) {
+            rewritten.append(pemContent, lastEnd, matcher.start());
+            rewritten.append(certificateOnlyPemBlock(matcher.group(1)));
+            lastEnd = matcher.end();
+        }
+        rewritten.append(pemContent, lastEnd, pemContent.length());
+        return rewritten.toString();
+    }
+
+    private static String certificateOnlyPemBlock(String base64Body) throws CertificateException {
+        try {
+            byte[] derWithTrustData = java.util.Base64.getMimeDecoder().decode(base64Body.replaceAll("\\s", ""));
+            X509Certificate certificate = (X509Certificate) CertificateFactory
+                .getInstance("X.509")
+                .generateCertificate(new ByteArrayInputStream(derWithTrustData));
+            return (
+                "-----BEGIN CERTIFICATE-----\n" +
+                java.util.Base64.getMimeEncoder(64, "\n".getBytes(StandardCharsets.UTF_8)).encodeToString(certificate.getEncoded()) +
+                "\n-----END CERTIFICATE-----"
+            );
+        } catch (IllegalArgumentException e) {
+            throw new CertificateException("Failed to decode base64 body of TRUSTED CERTIFICATE block", e);
+        }
     }
 
     private void addLeafCertificate(String hash, String pemContent, RSAKey signingKey) throws JOSEException, NoSuchAlgorithmException {
         List<X509Certificate> certificates;
         try {
-            certificates = X509CertChainUtils.parse(pemContent);
+            certificates = X509CertChainUtils.parse(rewriteTrustedCertificateBlocksAsCertificates(pemContent));
         } catch (CertificateException | IOException ex) {
             log.error(
                 "[generate-jwt] Failed to parse the certificate block of the key material for resolver {}.",
                 configuration.getKeyResolver().name(),
                 ex
             );
-            certChains.put(hash, List.of());
-            leafCertificates.put(hash, NO_LEAF_CERTIFICATE);
+            clearCertificateCaches(hash);
             return;
         }
 
         X509Certificate signingCertificate = findSigningCertificate(certificates, signingKey);
         if (signingCertificate == null) {
-            certChains.put(hash, List.of());
-            leafCertificates.put(hash, NO_LEAF_CERTIFICATE);
+            log.warn(
+                "[generate-jwt] no certificate in the key material matches the signing key for resolver {} — certificate chain will not be embedded.",
+                configuration.getKeyResolver().name()
+            );
+            if (configuration.isX509CertSha1Thumbprint()) {
+                log.error(
+                    "[generate-jwt] x5t toggle enabled but no certificate in the key material matches the signing key for resolver {} — thumbprint cannot be computed.",
+                    configuration.getKeyResolver().name()
+                );
+            }
+            if (configuration.isX509CertSha256Thumbprint()) {
+                log.error(
+                    "[generate-jwt] x5t#S256 toggle enabled but no certificate in the key material matches the signing key for resolver {} — thumbprint cannot be computed.",
+                    configuration.getKeyResolver().name()
+                );
+            }
+            if (configuration.getX509CertificateChain() == X509CertificateChain.X5C) {
+                log.error(
+                    "[generate-jwt] x5c certificate chain requested but no certificate in the key material matches the signing key for resolver {} — the request will be rejected.",
+                    configuration.getKeyResolver().name()
+                );
+            }
+            clearCertificateCaches(hash);
             return;
         }
 
-        List<X509Certificate> orderedCertificates = orderCertificateChain(signingCertificate, certificates);
+        List<X509Certificate> orderedCertificates = orderCertificateChain(
+            signingCertificate,
+            certificates,
+            configuration.getKeyResolver().name()
+        );
         try {
             List<Base64> certChain = new ArrayList<>(orderedCertificates.size());
             for (X509Certificate certificate : orderedCertificates) {
                 certChain.add(Base64.encode(certificate.getEncoded()));
             }
             certChains.put(hash, certChain);
-            leafCertificates.put(hash, computeX5t(signingCertificate.getEncoded()));
+            leafCertificates.put(hash, Optional.of(computeX5t(signingCertificate.getEncoded())));
+            leafCertificatesSha256.put(hash, Optional.of(computeX5tS256(signingCertificate.getEncoded())));
         } catch (CertificateEncodingException ex) {
             log.error(
                 "[generate-jwt] Failed to encode the certificate chain of the key material for resolver {}.",
                 configuration.getKeyResolver().name(),
                 ex
             );
-            certChains.put(hash, List.of());
-            leafCertificates.put(hash, NO_LEAF_CERTIFICATE);
+            clearCertificateCaches(hash);
         }
     }
 
-    private static List<X509Certificate> orderCertificateChain(X509Certificate signingCertificate, List<X509Certificate> certificates) {
+    private static List<X509Certificate> orderCertificateChain(
+        X509Certificate signingCertificate,
+        List<X509Certificate> certificates,
+        String resolverName
+    ) {
         List<X509Certificate> remaining = new ArrayList<>(certificates);
         remaining.remove(signingCertificate);
 
@@ -401,6 +555,13 @@ public class GenerateJwtPolicy {
         }
         // Any certificate whose issuer linkage couldn't be resolved (unrelated or malformed bundle)
         // is appended as-is rather than dropped, so x5c degrades gracefully instead of losing data.
+        if (!remaining.isEmpty()) {
+            log.warn(
+                "[generate-jwt] The x5c certificate chain for resolver {} is incomplete: {} certificate(s) could not be linked to the signing certificate and are appended unordered.",
+                resolverName,
+                remaining.size()
+            );
+        }
         ordered.addAll(remaining);
         return ordered;
     }
@@ -408,26 +569,41 @@ public class GenerateJwtPolicy {
     private X509Certificate findSigningCertificate(List<X509Certificate> certificates, RSAKey signingKey) throws JOSEException {
         RSAPublicKey signingPublicKey = signingKey.toRSAPublicKey();
         for (X509Certificate certificate : certificates) {
-            if (certificate.getPublicKey() instanceof RSAPublicKey) {
-                RSAPublicKey certificatePublicKey = (RSAPublicKey) certificate.getPublicKey();
-                if (publicKeysMatch(certificatePublicKey, signingPublicKey)) {
-                    return certificate;
-                }
+            PublicKey certificatePublicKey = certificate.getPublicKey();
+            if (certificatePublicKey instanceof RSAPublicKey && publicKeysMatch((RSAPublicKey) certificatePublicKey, signingPublicKey)) {
+                return certificate;
             }
         }
         return null;
     }
 
-    private static boolean leafMatchesSigningKey(Certificate leafCertificate, PrivateKey signingKey) {
-        if (!(leafCertificate.getPublicKey() instanceof RSAPublicKey) || !(signingKey instanceof RSAPrivateCrtKey)) {
-            return false;
+    private enum LeafMatchResult {
+        VERIFIED,
+        UNVERIFIED_BYPASS,
+        MISMATCH,
+    }
+
+    private static LeafMatchResult leafMatchesSigningKey(Certificate leafCertificate, PrivateKey signingKey, String resolverName) {
+        if (!(leafCertificate.getPublicKey() instanceof RSAPublicKey)) {
+            return LeafMatchResult.MISMATCH;
+        }
+        // A non-CRT RSAPrivateKey (e.g. from a PKCS11/HSM or FIPS provider) exposes no public
+        // exponent, so the modulus/exponent cross-check is impossible. The leaf and the key both
+        // come from the same KeyStore.PrivateKeyEntry, whose correspondence the KeyStore contract
+        // already guarantees, so treat that provider-vouched pairing as a match instead of failing closed.
+        if (!(signingKey instanceof RSAPrivateCrtKey)) {
+            log.warn(
+                "[generate-jwt] Signing key for resolver {} is a non-CRT RSA private key — the modulus/exponent cross-check between the certificate leaf and the signing key was bypassed and the KeyStore-provider-vouched leaf/key pairing was trusted instead.",
+                resolverName
+            );
+            return LeafMatchResult.UNVERIFIED_BYPASS;
         }
         RSAPublicKey leafPublicKey = (RSAPublicKey) leafCertificate.getPublicKey();
         RSAPrivateCrtKey signingCrtKey = (RSAPrivateCrtKey) signingKey;
-        return (
+        boolean matches =
             leafPublicKey.getModulus().equals(signingCrtKey.getModulus()) &&
-            leafPublicKey.getPublicExponent().equals(signingCrtKey.getPublicExponent())
-        );
+            leafPublicKey.getPublicExponent().equals(signingCrtKey.getPublicExponent());
+        return matches ? LeafMatchResult.VERIFIED : LeafMatchResult.MISMATCH;
     }
 
     private static boolean publicKeysMatch(RSAPublicKey a, RSAPublicKey b) {
@@ -520,24 +696,31 @@ public class GenerateJwtPolicy {
     }
 
     /**
-     * Identifies the resolved key material; sha1() of this is the actual signer/certificate cache
-     * key. Must include the key resolver and alias, not just content, since a single keystore file
-     * can hold multiple aliases.
+     * Identifies the resolved key material; this is the actual signer/certificate cache key. Must
+     * include the key resolver and alias, not just content, since a single keystore file can hold
+     * multiple aliases. Each field is hashed individually before joining so a field's own content
+     * can't spoof the dot separator and blur the boundary between fields.
      */
-    private String cacheKeyMaterial() {
+    String cacheKeyMaterial() {
         String keyResolver = configuration.getKeyResolver() == null ? "" : configuration.getKeyResolver().name();
         String content = configuration.getContent() == null ? "" : configuration.getContent();
         String alias = configuration.getAlias() == null ? "" : configuration.getAlias();
         return sha1(keyResolver) + "." + sha1(content) + "." + sha1(alias);
     }
 
+    private static Base64URL computeX5tS256(byte[] leafCertDer) throws NoSuchAlgorithmException {
+        // SHA-256 is mandated here by RFC 7515 section 4.1.8 for the x5t#S256 header value, not a general-purpose hash choice.
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        return Base64URL.encode(digest.digest(leafCertDer));
+    }
+
     public String sha1(String input) {
-        String sha1 = null;
         try {
             MessageDigest msdDigest = MessageDigest.getInstance("SHA-1");
             msdDigest.update(input.getBytes(StandardCharsets.UTF_8));
-            sha1 = DatatypeConverter.printHexBinary(msdDigest.digest());
-        } catch (NoSuchAlgorithmException ignored) {}
-        return sha1;
+            return DatatypeConverter.printHexBinary(msdDigest.digest());
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-1 is required to compute the signer cache key but is unavailable", e);
+        }
     }
 }

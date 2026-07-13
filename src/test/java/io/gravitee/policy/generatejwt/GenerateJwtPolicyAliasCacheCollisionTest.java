@@ -38,6 +38,7 @@ import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.cert.Certificate;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
@@ -67,6 +68,16 @@ class GenerateJwtPolicyAliasCacheCollisionTest {
         MockitoAnnotations.openMocks(this);
         GenerateJwtPolicy.signers.clear();
         GenerateJwtPolicy.certChains.clear();
+        GenerateJwtPolicy.leafCertificates.clear();
+        GenerateJwtPolicy.leafCertificatesSha256.clear();
+    }
+
+    @AfterEach
+    void tearDown() {
+        GenerateJwtPolicy.signers.clear();
+        GenerateJwtPolicy.certChains.clear();
+        GenerateJwtPolicy.leafCertificates.clear();
+        GenerateJwtPolicy.leafCertificatesSha256.clear();
     }
 
     @Test

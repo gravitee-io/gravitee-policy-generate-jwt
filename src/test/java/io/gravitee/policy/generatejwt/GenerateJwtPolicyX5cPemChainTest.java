@@ -98,6 +98,7 @@ class GenerateJwtPolicyX5cPemChainTest {
         GenerateJwtPolicy.signers.clear();
         GenerateJwtPolicy.certChains.clear();
         GenerateJwtPolicy.leafCertificates.clear();
+        GenerateJwtPolicy.leafCertificatesSha256.clear();
         when(request.metrics()).thenReturn(Metrics.on(System.currentTimeMillis()).build());
         when(executionContext.getTemplateEngine()).thenReturn(templateEngine);
         when(templateEngine.convert(anyString())).thenAnswer(invMock -> invMock.getArgument(0));
@@ -109,6 +110,7 @@ class GenerateJwtPolicyX5cPemChainTest {
         GenerateJwtPolicy.signers.clear();
         GenerateJwtPolicy.certChains.clear();
         GenerateJwtPolicy.leafCertificates.clear();
+        GenerateJwtPolicy.leafCertificatesSha256.clear();
     }
 
     @Test
@@ -189,8 +191,15 @@ class GenerateJwtPolicyX5cPemChainTest {
 
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
-        verify(policyChain, times(1)).failWith(any());
+        ArgumentCaptor<PolicyResult> captor = ArgumentCaptor.forClass(PolicyResult.class);
+        verify(policyChain, times(1)).failWith(captor.capture());
+        assertEquals(
+            500,
+            captor.getValue().statusCode(),
+            "x5c requested with a certificate not matching the signing key must fail with HTTP 500"
+        );
         verify(policyChain, never()).doNext(any(), any());
+        verify(executionContext, never()).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), any());
     }
 
     @Test
@@ -223,7 +232,13 @@ class GenerateJwtPolicyX5cPemChainTest {
 
         new GenerateJwtPolicy(x5c).onRequest(request, response, x5cExecutionContext, x5cPolicyChain);
 
-        verify(x5cPolicyChain, times(1)).failWith(any());
+        ArgumentCaptor<PolicyResult> captor = ArgumentCaptor.forClass(PolicyResult.class);
+        verify(x5cPolicyChain, times(1)).failWith(captor.capture());
+        assertEquals(
+            500,
+            captor.getValue().statusCode(),
+            "x5c requested against a cache primed by an unmatched-certificate thumbprint request must fail with HTTP 500"
+        );
         verify(x5cPolicyChain, never()).doNext(any(), any());
         verify(x5cExecutionContext, never()).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), any());
     }
@@ -347,6 +362,81 @@ class GenerateJwtPolicyX5cPemChainTest {
     }
 
     @Test
+    void x5cAppendsUnlinkableCertificateAsIs_whenLeafIssuerIsAbsentFromTheBundle() throws Exception {
+        Security.addProvider(new BouncyCastleProvider());
+
+        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+        keyPairGenerator.initialize(2048);
+        KeyPair intermediateKeyPair = keyPairGenerator.generateKeyPair();
+        KeyPair leafKeyPair = keyPairGenerator.generateKeyPair();
+        KeyPair unrelatedKeyPair = keyPairGenerator.generateKeyPair();
+
+        Date notBefore = Date.from(Instant.now().minusSeconds(3_600));
+        Date notAfter = Date.from(Instant.now().plusSeconds(3_600 * 24 * 365));
+
+        X500Name intermediateSubject = new X500Name("CN=Absent Intermediate CA");
+        X500Name leafSubject = new X500Name("CN=Test Leaf");
+        X500Name unrelatedSubject = new X500Name("CN=Unrelated CA");
+
+        X509Certificate leafCert = buildCertificate(
+            intermediateSubject,
+            intermediateKeyPair.getPrivate(),
+            leafSubject,
+            leafKeyPair.getPublic(),
+            notBefore,
+            notAfter,
+            false
+        );
+        X509Certificate unrelatedCaCert = buildCertificate(
+            unrelatedSubject,
+            unrelatedKeyPair.getPrivate(),
+            unrelatedSubject,
+            unrelatedKeyPair.getPublic(),
+            notBefore,
+            notAfter,
+            true
+        );
+
+        String pemContent =
+            pemEncodePrivateKey(leafKeyPair.getPrivate()) +
+            "\n" +
+            pemEncodeCertificate(leafCert) +
+            "\n" +
+            pemEncodeCertificate(unrelatedCaCert);
+
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode config = mapper.createObjectNode();
+        config.put("signature", "RSA_RS256");
+        config.put("keyResolver", "INLINE");
+        config.put("content", pemContent);
+        config.put("x509CertificateChain", "X5C");
+        config.put("x509CertSha1Thumbprint", false);
+        GenerateJwtPolicyConfiguration configuration = mapper.treeToValue(config, GenerateJwtPolicyConfiguration.class);
+
+        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
+
+        verify(policyChain, never()).failWith(any());
+        verify(policyChain, times(1)).doNext(request, response);
+
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(executionContext, times(1)).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), captor.capture());
+        Map<String, Object> header = decodeHeader((String) captor.getValue());
+        List<?> x5c = (List<?>) header.get("x5c");
+
+        assertEquals(2, x5c.size(), "the unlinkable certificate must still be appended to x5c (degrade-gracefully behavior preserved)");
+        assertEquals(
+            Base64.getEncoder().encodeToString(leafCert.getEncoded()),
+            x5c.get(0).toString(),
+            "x5c[0] must be the signing (leaf) certificate"
+        );
+        assertEquals(
+            Base64.getEncoder().encodeToString(unrelatedCaCert.getEncoded()),
+            x5c.get(1).toString(),
+            "the certificate whose issuer linkage could not be resolved must be appended as-is"
+        );
+    }
+
+    @Test
     void x5cCertificateMatchesSigningKey_whenPemFileRotatedBetweenWarmUpAndX5cEnabled() throws Exception {
         Security.addProvider(new BouncyCastleProvider());
 
@@ -413,7 +503,7 @@ class GenerateJwtPolicyX5cPemChainTest {
         verify(executionContext, times(1)).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), captor.capture());
 
         SignedJWT signedJWT = SignedJWT.parse((String) captor.getValue());
-        var x5cChain = signedJWT.getHeader().getX509CertChain();
+        List<com.nimbusds.jose.util.Base64> x5cChain = signedJWT.getHeader().getX509CertChain();
         X509Certificate advertisedCert = (X509Certificate) CertificateFactory
             .getInstance("X.509")
             .generateCertificate(new ByteArrayInputStream(x5cChain.get(0).decode()));

@@ -1,0 +1,275 @@
+/**
+ * Copyright (C) 2015 The Gravitee team (http://gravitee.io)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package io.gravitee.policy.generatejwt;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+import com.nimbusds.jose.util.Base64URL;
+import com.nimbusds.jose.util.JSONObjectUtils;
+import io.gravitee.el.TemplateEngine;
+import io.gravitee.gateway.api.ExecutionContext;
+import io.gravitee.gateway.api.Request;
+import io.gravitee.gateway.api.Response;
+import io.gravitee.policy.api.PolicyChain;
+import io.gravitee.policy.api.PolicyResult;
+import io.gravitee.policy.generatejwt.alg.Signature;
+import io.gravitee.policy.generatejwt.configuration.GenerateJwtPolicyConfiguration;
+import io.gravitee.policy.generatejwt.configuration.KeyResolver;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.KeyStore;
+import java.security.cert.Certificate;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.Map;
+import java.util.Set;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.MockedStatic;
+import org.mockito.MockitoAnnotations;
+
+class GenerateJwtPolicyX5tS256FailFastTest {
+
+    private static final String HMAC_SECRET_512_BITS = "0123456789012345678901234567890123456789012345678901234567890123";
+    private static final String KEYSTORE_ALIAS = "graviteeio";
+    private static final String KEYSTORE_STOREPASS = "graviteeio.my.storepass";
+    private static final String KEYSTORE_KEYPASS = "graviteeio.my.keypass";
+
+    @Mock
+    private ExecutionContext executionContext;
+
+    @Mock
+    private Request request;
+
+    @Mock
+    private Response response;
+
+    @Mock
+    private PolicyChain policyChain;
+
+    @Mock
+    private GenerateJwtPolicyConfiguration configuration;
+
+    @Mock
+    private TemplateEngine templateEngine;
+
+    @BeforeEach
+    void init() {
+        MockitoAnnotations.openMocks(this);
+        GenerateJwtPolicy.signers.clear();
+        GenerateJwtPolicy.certChains.clear();
+        GenerateJwtPolicy.leafCertificates.clear();
+        GenerateJwtPolicy.leafCertificatesSha256.clear();
+        when(executionContext.getTemplateEngine()).thenReturn(templateEngine);
+        when(templateEngine.convert(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(templateEngine.getValue(anyString(), any())).thenAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    @AfterEach
+    void tearDown() {
+        GenerateJwtPolicy.signers.clear();
+        GenerateJwtPolicy.certChains.clear();
+        GenerateJwtPolicy.leafCertificates.clear();
+        GenerateJwtPolicy.leafCertificatesSha256.clear();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Signature.class, names = { "HMAC_HS256", "HMAC_HS384", "HMAC_HS512" })
+    void ignoresSha256ThumbprintToggleAndSignsNormally_whenHmacSignatureConfiguredWithToggleEnabled(Signature signature) throws Exception {
+        when(configuration.getSignature()).thenReturn(signature);
+        when(configuration.isX509CertSha256Thumbprint()).thenReturn(true);
+        when(configuration.getContent()).thenReturn(HMAC_SECRET_512_BITS);
+        when(configuration.getSecretBase64Encoded()).thenReturn(false);
+
+        GenerateJwtPolicy policy = new GenerateJwtPolicy(configuration);
+
+        policy.onRequest(request, response, executionContext, policyChain);
+
+        verify(policyChain, never()).failWith(any());
+        verify(policyChain).doNext(request, response);
+        ArgumentCaptor<String> jwtCaptor = ArgumentCaptor.forClass(String.class);
+        verify(executionContext).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), jwtCaptor.capture());
+        Map<String, Object> header = decodeHeader(jwtCaptor.getValue());
+        assertFalse(header.containsKey("x5t#S256"), "an HMAC signature carries no certificate, so x5t#S256 must be silently ignored");
+        assertEquals(Set.of("alg"), header.keySet(), "an HMAC header must carry only the alg member");
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = KeyResolver.class, names = { "PEM", "INLINE" })
+    void rejectsEveryRequestWith500_whenSha256ThumbprintToggleEnabledAndNoCertificateIsAvailable(KeyResolver keyResolver) throws Exception {
+        Path privateKeyOnlyPem = Path.of(getClass().getResource("/priv.pem").toURI());
+        String content = keyResolver == KeyResolver.PEM ? privateKeyOnlyPem.toString() : Files.readString(privateKeyOnlyPem);
+        when(configuration.getSignature()).thenReturn(Signature.RSA_RS256);
+        when(configuration.isX509CertSha256Thumbprint()).thenReturn(true);
+        when(configuration.getKeyResolver()).thenReturn(keyResolver);
+        when(configuration.getContent()).thenReturn(content);
+
+        GenerateJwtPolicy policy = new GenerateJwtPolicy(configuration);
+
+        policy.onRequest(request, response, executionContext, policyChain);
+        policy.onRequest(request, response, executionContext, policyChain);
+
+        assertRejectedWith500(2);
+    }
+
+    @ParameterizedTest
+    @CsvSource({ "JKS, NULL_CHAIN", "JKS, EMPTY_CHAIN", "PKCS12, NULL_CHAIN", "PKCS12, EMPTY_CHAIN" })
+    void rejectsEveryRequestWith500IncludingTheFirst_whenSha256ThumbprintToggleEnabledAndKeystoreCertificateChainIsNullOrEmpty(
+        KeyResolver keyResolver,
+        String chainState
+    ) throws Exception {
+        String keystoreFile = keyResolver == KeyResolver.JKS ? "/graviteeio.jks" : "/graviteeio.p12";
+        String keystorePath = Path.of(getClass().getResource(keystoreFile).toURI()).toString();
+        KeyStore.PrivateKeyEntry realPrivateKeyEntry = loadRealPrivateKeyEntry(keyResolver, keystorePath);
+
+        when(configuration.getSignature()).thenReturn(Signature.RSA_RS256);
+        when(configuration.isX509CertSha256Thumbprint()).thenReturn(true);
+        when(configuration.getKeyResolver()).thenReturn(keyResolver);
+        when(configuration.getContent()).thenReturn(keystorePath);
+        when(configuration.getAlias()).thenReturn(KEYSTORE_ALIAS);
+        when(configuration.getStorepass()).thenReturn(KEYSTORE_STOREPASS);
+        when(configuration.getKeypass()).thenReturn(KEYSTORE_KEYPASS);
+
+        KeyStore chainlessKeyStore = mock(KeyStore.class);
+        Certificate[] certificateChain = "NULL_CHAIN".equals(chainState) ? null : new Certificate[0];
+        when(chainlessKeyStore.getCertificateChain(KEYSTORE_ALIAS)).thenReturn(certificateChain);
+        when(chainlessKeyStore.getEntry(eq(KEYSTORE_ALIAS), any())).thenReturn(realPrivateKeyEntry);
+
+        try (MockedStatic<KeyStore> keyStoreStatic = mockStatic(KeyStore.class)) {
+            keyStoreStatic.when(() -> KeyStore.getInstance(keyResolver.name())).thenReturn(chainlessKeyStore);
+
+            GenerateJwtPolicy policy = new GenerateJwtPolicy(configuration);
+
+            policy.onRequest(request, response, executionContext, policyChain);
+            policy.onRequest(request, response, executionContext, policyChain);
+
+            assertRejectedWith500(2);
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = KeyResolver.class, names = { "JKS", "PKCS12" })
+    void failsClosedWith500OnEveryRequestWithoutEmittingToken_whenKeystoreCertificateChainLeafDoesNotMatchSigningKey(
+        KeyResolver keyResolver
+    ) throws Exception {
+        String keystoreFile = keyResolver == KeyResolver.JKS ? "/graviteeio.jks" : "/graviteeio.p12";
+        String keystorePath = Path.of(getClass().getResource(keystoreFile).toURI()).toString();
+        KeyStore.PrivateKeyEntry realPrivateKeyEntry = loadRealPrivateKeyEntry(keyResolver, keystorePath);
+        Certificate foreignCertificate = foreignLeafCertificate();
+
+        assertFalse(
+            Arrays.equals(realPrivateKeyEntry.getCertificate().getPublicKey().getEncoded(), foreignCertificate.getPublicKey().getEncoded()),
+            "pre-condition: the keystore chain's leaf certificate must carry a different public key than the resolved signing key"
+        );
+
+        when(configuration.getSignature()).thenReturn(Signature.RSA_RS256);
+        when(configuration.isX509CertSha256Thumbprint()).thenReturn(true);
+        when(configuration.getKeyResolver()).thenReturn(keyResolver);
+        when(configuration.getContent()).thenReturn(keystorePath);
+        when(configuration.getAlias()).thenReturn(KEYSTORE_ALIAS);
+        when(configuration.getStorepass()).thenReturn(KEYSTORE_STOREPASS);
+        when(configuration.getKeypass()).thenReturn(KEYSTORE_KEYPASS);
+
+        KeyStore mismatchedKeyStore = mock(KeyStore.class);
+        when(mismatchedKeyStore.getCertificateChain(KEYSTORE_ALIAS)).thenReturn(new Certificate[] { foreignCertificate });
+        when(mismatchedKeyStore.getEntry(eq(KEYSTORE_ALIAS), any())).thenReturn(realPrivateKeyEntry);
+
+        try (MockedStatic<KeyStore> keyStoreStatic = mockStatic(KeyStore.class)) {
+            keyStoreStatic.when(() -> KeyStore.getInstance(keyResolver.name())).thenReturn(mismatchedKeyStore);
+
+            GenerateJwtPolicy policy = new GenerateJwtPolicy(configuration);
+
+            policy.onRequest(request, response, executionContext, policyChain);
+            policy.onRequest(request, response, executionContext, policyChain);
+
+            assertRejectedWith500(2);
+        }
+    }
+
+    @Test
+    void failsClosedWith500OnEveryRequestWithoutEmittingToken_whenInlinePemPairsPrivateKeyWithForeignCertificate() throws Exception {
+        String privateKeyPem = Files.readString(Path.of(getClass().getResource("/priv.pem").toURI()));
+        String foreignCertificatePem = pemEncodedJksLeafCertificate();
+        when(configuration.getSignature()).thenReturn(Signature.RSA_RS256);
+        when(configuration.isX509CertSha256Thumbprint()).thenReturn(true);
+        when(configuration.getKeyResolver()).thenReturn(KeyResolver.INLINE);
+        when(configuration.getContent()).thenReturn(privateKeyPem + "\n" + foreignCertificatePem);
+
+        GenerateJwtPolicy policy = new GenerateJwtPolicy(configuration);
+
+        policy.onRequest(request, response, executionContext, policyChain);
+        policy.onRequest(request, response, executionContext, policyChain);
+
+        assertRejectedWith500(2);
+    }
+
+    private String pemEncodedJksLeafCertificate() throws Exception {
+        String keystorePath = Path.of(getClass().getResource("/graviteeio.jks").toURI()).toString();
+        KeyStore keyStore = KeyStore.getInstance("JKS");
+        try (InputStream inputStream = new FileInputStream(keystorePath)) {
+            keyStore.load(inputStream, KEYSTORE_STOREPASS.toCharArray());
+        }
+        byte[] certificateDer = keyStore.getCertificate(KEYSTORE_ALIAS).getEncoded();
+        return (
+            "-----BEGIN CERTIFICATE-----\n" +
+            Base64.getMimeEncoder(64, "\n".getBytes(StandardCharsets.UTF_8)).encodeToString(certificateDer) +
+            "\n-----END CERTIFICATE-----\n"
+        );
+    }
+
+    private Certificate foreignLeafCertificate() throws Exception {
+        String keystorePath = Path.of(getClass().getResource("/graviteeio-chain.jks").toURI()).toString();
+        KeyStore keyStore = KeyStore.getInstance("JKS");
+        try (InputStream inputStream = new FileInputStream(keystorePath)) {
+            keyStore.load(inputStream, "chain.my.storepass".toCharArray());
+        }
+        return keyStore.getCertificate("leaf");
+    }
+
+    private KeyStore.PrivateKeyEntry loadRealPrivateKeyEntry(KeyResolver keyResolver, String keystorePath) throws Exception {
+        KeyStore keyStore = KeyStore.getInstance(keyResolver.name());
+        try (InputStream inputStream = new FileInputStream(keystorePath)) {
+            keyStore.load(inputStream, KEYSTORE_STOREPASS.toCharArray());
+        }
+        String entryPassword = keyResolver == KeyResolver.JKS ? KEYSTORE_KEYPASS : KEYSTORE_STOREPASS;
+        return (KeyStore.PrivateKeyEntry) keyStore.getEntry(KEYSTORE_ALIAS, new KeyStore.PasswordProtection(entryPassword.toCharArray()));
+    }
+
+    private Map<String, Object> decodeHeader(String jwt) throws Exception {
+        String protectedHeader = new String(Base64URL.from(jwt.split("\\.")[0]).decode(), StandardCharsets.UTF_8);
+        return JSONObjectUtils.parse(protectedHeader);
+    }
+
+    private void assertRejectedWith500(int expectedRejections) {
+        ArgumentCaptor<PolicyResult> captor = ArgumentCaptor.forClass(PolicyResult.class);
+        verify(policyChain, times(expectedRejections)).failWith(captor.capture());
+        for (PolicyResult result : captor.getAllValues()) {
+            assertEquals(500, result.statusCode(), "each rejection must carry HTTP 500");
+        }
+        verify(policyChain, never()).doNext(any(), any());
+        verify(executionContext, never()).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), any());
+    }
+}

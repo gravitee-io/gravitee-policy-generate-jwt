@@ -92,6 +92,12 @@ When a signed JWT is generated, it is put in the `jwt.generated` attribute of th
 ^.^|boolean
 ^.^|false
 
+.^|x509CertSha256Thumbprint
+^.^|-
+|Whether the SHA-256 thumbprint of the signing certificate should be added as an x5t#S256 header. Only applies when using an RSA signature; if enabled without a resolvable certificate in the key material, all requests are rejected with a 500. Ignored when using an HMAC algorithm.
+^.^|boolean
+^.^|false
+
 |===
 
 == Attributes
