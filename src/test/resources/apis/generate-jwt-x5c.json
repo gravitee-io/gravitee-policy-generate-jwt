@@ -1,0 +1,61 @@
+{
+  "id": "my-api-jwt-x5c",
+  "name": "my-api",
+  "gravitee": "2.0.0",
+  "proxy": {
+    "context_path": "/test-jwt-x5c",
+    "endpoints": [
+      {
+        "name": "default",
+        "target": "http://localhost:8080/endpoint",
+        "http": {
+          "connectTimeout": 3000,
+          "readTimeout": 60000
+        }
+      }
+    ]
+  },
+  "flows": [
+    {
+      "name": "flow-1",
+      "methods": [
+        "GET"
+      ],
+      "enabled": true,
+      "path-operator": {
+        "path": "/",
+        "operator": "STARTS_WITH"
+      },
+      "pre": [
+        {
+          "name": "Generate JWT",
+          "description": "",
+          "enabled": true,
+          "policy": "policy-generate-jwt",
+          "configuration": {
+            "signature": "RSA_RS256",
+            "expiresIn": 30,
+            "expiresInUnit": "SECONDS",
+            "issuer": "urn://gravitee-api-gw",
+            "audiences": [
+              "graviteeam"
+            ],
+            "id": "817c6cfa-6ae6-446e-a631-5ded215b404b",
+            "kid": "my-kid",
+            "keyResolver": "INLINE",
+            "content": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDEWvMZ/HjhQq5Y\noCViflSLyTISWfLz3Lkp9g6MAx+qpuaf0oP7Jqi0I+6OAp9ksZ+TI3EITpjHp2Mu\njIkJOnERSWTACPal8e8Id4YrepV023ymitVifCoCgrAw9JGRZ4NmO6/sNGB/9Cqn\nleG1UsG+8D/vdP0gl375W769swZNG9L5E4BECjf4EMfTXmylbFXdtlhiPAW1oMcD\nqh85f4Hf+zc/4qWIl5Pf+/bXBihtliJeUOD0gDL2sBEnljrcMKbUuHYbj8ykZpJJ\nk5dR1G1/pDmENnHqmV2BNaNaHhSNRkwGZSWnO0rMsew+LAFUekYTC2eecZtacN0M\ncPE6BB+hAgMBAAECggEAB2GB1N68Ln+CrTsr3JVyGSUReEYgT1FjNnQU3Od7J7+J\nWMWhh23PFqJpI7Zuhmr03COPaqgFry+YF1ZaClpDiMpQ+rT7jIZZHWDczsKXXqKn\nf10lo0OWkqyV8eknlacl9dBVjxPy8qxbdBw6tUWsmcBPLvGfWDvJnpb3xwq1OG27\n1wm4LqxAdE90goIG3F2G+nsTHwTvL3kbJqd/D3GMBV4yer4qmUUYp4LfcTyFhpAI\nfbEOH8GFr4EdILPYOPAZEI96EphvFv9h9OIFy5WsseXtFA5rm1NKHDg4b/U29X/L\nRcXKFt9Y1v/zMMZDJ2oEpACengNKwBwhAlQPEfzGoQKBgQD9psTLoJPXINVIOb+b\noZSANqbEZuFYnnGdJbzs+R0xW069XDeLbROAMV8SUvygXWUEDDyzftuZEg0NptfZ\nwso+0WUaOLOG5/+JhBdv2byKGyedLvMkGKczAOITJlqxWV0y6nad08wsrmFihpZ7\niy2cZaGznkFKsM8Q2wP4va3BGQKBgQDGLF8aBVv4WHZ9eT8SBsOw3XS7GM8YFTtB\nyvJEFF0sn6tmnnHBk5+6CtYn5Qw0w85+1hnO6h5zO7Ayi2Xmz7B/vdpIFRqNL6ZF\ny5D4l2AiM/HiOB1A21x64VnIMe3LW4dV8hlBP9OIE/HZgJCYDrLBeOhdobzIpS0W\nFSczZuT7yQKBgA9Vl6wfxxBIYdx98UF9YTbnFunktlbfLUsszuEcplEnjfkQrCL3\nsyga0/6NmcwwGT1HaBwJ3UjBuJxMq9v0VLm7evs81k2flOlBXRFb/nPy9FAiWHyk\nKOeCdChoNy9lkabUWdtsxHknCaglLs/FODquQjpTpOrZCYuhUfolrW1xAoGAIuLS\nxxDkdN6V1VbPzIuWTX9eukUOx+2M5fMlHOj80gs1sDX6Tpp/Rs/7jUBcGrnRkzB7\nkJpUS/LY/LzfbndnWcWBNKlKaEpYGfdRCQIU8VB1p147gBxdtmAPXxezBdaSB4Y7\n/emPgmgIbkKcsbf8reRr+3eqdSPmwPluUjUt4EkCgYBz4ChKK8fsU9jFayKvj+lN\nHMxn7aB6PvIHI0LaxRExkHKz/y9InX20lSQnTvPCauyzhsCtIyCtXjwgmnvyxtCF\n325zr0R4sJ0kw7/vaRnPPw+sodHihw5P7m6t8fI3RPC9rjDvRqgkhx8Bod5DQdAo\nPshLFXzUXJhPeNjTdNBkiw==\n-----END PRIVATE KEY-----\n-----BEGIN CERTIFICATE-----\nMIIDKzCCAhOgAwIBAgIUfaCTubynkevWIXvpVKj2keiYyx0wDQYJKoZIhvcNAQEL\nBQAwJTEjMCEGA1UEAwwaZ3Jhdml0ZWVpby14NXQtcGVtLWZpeHR1cmUwHhcNMjYw\nNzAyMDIwMTEwWhcNNDYwNjI3MDIwMTEwWjAlMSMwIQYDVQQDDBpncmF2aXRlZWlv\nLXg1dC1wZW0tZml4dHVyZTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEB\nAMRa8xn8eOFCrligJWJ+VIvJMhJZ8vPcuSn2DowDH6qm5p/Sg/smqLQj7o4Cn2Sx\nn5MjcQhOmMenYy6MiQk6cRFJZMAI9qXx7wh3hit6lXTbfKaK1WJ8KgKCsDD0kZFn\ng2Y7r+w0YH/0KqeV4bVSwb7wP+90/SCXfvlbvr2zBk0b0vkTgEQKN/gQx9NebKVs\nVd22WGI8BbWgxwOqHzl/gd/7Nz/ipYiXk9/79tcGKG2WIl5Q4PSAMvawESeWOtww\nptS4dhuPzKRmkkmTl1HUbX+kOYQ2ceqZXYE1o1oeFI1GTAZlJac7Ssyx7D4sAVR6\nRhMLZ55xm1pw3Qxw8ToEH6ECAwEAAaNTMFEwHQYDVR0OBBYEFBd998m2izy0NB12\nQ2WigW4u3IHPMB8GA1UdIwQYMBaAFBd998m2izy0NB12Q2WigW4u3IHPMA8GA1Ud\nEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAIwlYcD6pyyWpsJys2iT0Zl3\ndQS7j3IUi4qyXBcs6widQiDC2imxuYZL9cY4gdCshK0OY0Z3t4lqga1BzVi8sz1T\nrNnlRd4L2oHYg769ckcAx35Uy8gwnVK2ZsVnWAiQAw08xSDGHNTo6OXeMpg/LhAj\nlzyPW3EtnxnRurNvDJGQJr5+PBHk1RDjdpngkxwVMnZPsd0qG6VigSZt3NyYxjWW\ni75Ivme8C+RhQW3c3fxakl4o2OM5/bWt4Rr+IGzKz0gjV2O+Oo9XJU2xcGmFI/kX\nMaLxwXtDVJpmqMMi6QYcgZmxUjstOg1Kx//YOymWRrjaTtySYIfAhi/N0LVOFn8=\n-----END CERTIFICATE-----\n",
+            "x509CertificateChain": "X5C"
+          }
+        },
+        {
+          "name": "Generate JWT",
+          "description": "",
+          "enabled": true,
+          "policy": "jwt-attributes-to-headers",
+          "configuration": {}
+        }
+      ],
+      "post": []
+    }
+  ]
+}

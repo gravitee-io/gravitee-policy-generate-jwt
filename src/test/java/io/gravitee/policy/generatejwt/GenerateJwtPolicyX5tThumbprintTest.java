@@ -79,6 +79,11 @@ class GenerateJwtPolicyX5tThumbprintTest {
     private static final String CHAIN_JKS_KEYPASS = "chain.my.keypass";
     private static final String CHAIN_JKS_ALIAS = "leaf";
 
+    // Computed independently of production, via:
+    //   keytool -exportcert -alias leaf -keystore src/test/resources/graviteeio-chain.jks -storepass chain.my.storepass \
+    //     | openssl dgst -sha1 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '='
+    private static final String PINNED_CHAIN_JKS_X5T = "8wU52eU_zd9_ui7j5D77QrLufDo";
+
     private static final String PINNED_GRAVITEEIO_JKS_X5T = "QSfzKW4MCLGqZye46EVLJF7n8dc";
 
     private static final String GRAVITEEIO_P12 = "/graviteeio.p12";
@@ -90,6 +95,12 @@ class GenerateJwtPolicyX5tThumbprintTest {
     private static final String PINNED_PEM_WITH_CERT_X5T = "1VIruVLp9rHaINhtafJpVjintZw";
 
     private static final String PEM_WITH_CA_FIRST_CHAIN = "/priv-with-chain-ca-first.pem";
+
+    // Computed independently of production, from the leaf (signing) certificate — the second
+    // CERTIFICATE block, CN=Test Chain Leaf, issued by CN=Test Chain CA — of priv-with-chain-ca-first.pem:
+    //   awk '/BEGIN CERTIFICATE/{n++} n==2' src/test/resources/priv-with-chain-ca-first.pem \
+    //     | openssl x509 -outform DER | openssl dgst -sha1 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '='
+    private static final String PINNED_PEM_WITH_CA_FIRST_CHAIN_X5T = "zsPN7MI3ZXAxk6z50oG_huiE5Jc";
 
     @Mock
     private ExecutionContext executionContext;
@@ -115,6 +126,7 @@ class GenerateJwtPolicyX5tThumbprintTest {
         GenerateJwtPolicy.signers.clear();
         GenerateJwtPolicy.certChains.clear();
         GenerateJwtPolicy.leafCertificates.clear();
+        GenerateJwtPolicy.leafCertificatesSha256.clear();
         when(request.metrics()).thenReturn(Metrics.on(System.currentTimeMillis()).build());
         when(executionContext.getTemplateEngine()).thenReturn(templateEngine);
         when(templateEngine.convert(anyString())).thenAnswer(invMock -> invMock.getArgument(0));
@@ -126,17 +138,7 @@ class GenerateJwtPolicyX5tThumbprintTest {
         GenerateJwtPolicy.signers.clear();
         GenerateJwtPolicy.certChains.clear();
         GenerateJwtPolicy.leafCertificates.clear();
-    }
-
-    @Test
-    void jwsProtectedHeaderContainsNonEmptyX5t_whenToggleEnabled() throws Exception {
-        stubJksResolver(uniqueCopy(GRAVITEEIO_JKS), GRAVITEEIO_JKS_ALIAS, GRAVITEEIO_JKS_STOREPASS, GRAVITEEIO_JKS_KEYPASS);
-
-        Map<String, Object> header = decodeHeader(generateJwt());
-
-        assertTrue(header.containsKey("x5t"), "protected header must contain an x5t member");
-        assertTrue(header.get("x5t") instanceof String, "x5t must be a string");
-        assertFalse(((String) header.get("x5t")).isEmpty(), "x5t must be non-empty");
+        GenerateJwtPolicy.leafCertificatesSha256.clear();
     }
 
     @Test
@@ -269,47 +271,56 @@ class GenerateJwtPolicyX5tThumbprintTest {
         Certificate[] chain = loadChain(keystorePath, CHAIN_JKS_STOREPASS, CHAIN_JKS_ALIAS);
         assertTrue(chain.length >= 2, "fixture must supply a multi-entry chain (leaf + CA)");
 
-        String leafX5t = sha1Base64Url(chain[0]);
-        String caX5t = sha1Base64Url(chain[chain.length - 1]);
-
-        assertEquals(leafX5t, x5t, "x5t must equal the leaf (chain[0]) thumbprint");
-        assertNotEquals(caX5t, x5t, "x5t must NOT equal a non-leaf entry's thumbprint");
+        assertEquals(PINNED_CHAIN_JKS_X5T, x5t, "x5t must equal the pinned SHA-1 thumbprint of the CHAIN_JKS leaf certificate");
     }
 
-    @Test
-    void x5tIsLeafCertThumbprint_whenPkcs12ResolverSuppliesSigningCertificate() throws Exception {
-        stubPkcs12Resolver(uniqueCopy(GRAVITEEIO_P12, ".p12"), GRAVITEEIO_P12_ALIAS, GRAVITEEIO_P12_STOREPASS);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("leafCertificateResolverFixtures")
+    void x5tIsBase64UrlOfSha1OfLeafDer_acrossCertBearingResolvers(String resolverName, LeafResolverSetup setup, String pinnedX5t)
+        throws Exception {
+        Certificate leaf = setup.apply(this);
 
         Base64URL x5t = generateSignedJwt().getHeader().getX509CertThumbprint();
 
-        assertNotNull(x5t, "PKCS12 resolver must emit x5t when the keystore carries a certificate and the toggle is enabled");
-        assertEquals(PINNED_GRAVITEEIO_P12_X5T, x5t.toString());
-    }
-
-    @Test
-    void x5tIsLeafCertThumbprint_whenPemResolverContentCarriesCertificate() throws Exception {
-        String pemPath = uniqueCopy(PEM_WITH_CERT, ".pem");
-        stubPemResolver(pemPath);
-
-        Base64URL x5t = generateSignedJwt().getHeader().getX509CertThumbprint();
-
-        assertNotNull(x5t, "PEM resolver must emit x5t when its content carries a CERTIFICATE block and the toggle is enabled");
-        assertEquals(PINNED_PEM_WITH_CERT_X5T, x5t.toString());
+        assertNotNull(x5t, resolverName + " resolver must emit x5t when the key material carries a certificate and the toggle is enabled");
+        assertEquals(pinnedX5t, x5t.toString());
         assertEquals(
-            sha1Base64Url(loadPemCertificate(pemPath)),
+            sha1Base64Url(leaf),
             x5t.toString(),
-            "x5t must equal SHA-1(DER(certificate embedded in the PEM content))"
+            resolverName + " x5t must equal SHA-1(DER(leaf certificate supplied by the resolver))"
         );
     }
 
-    @Test
-    void x5tIsLeafCertThumbprint_whenInlineResolverContentCarriesCertificate() throws Exception {
-        stubInlineResolver(fixtureText(PEM_WITH_CERT));
-
-        Base64URL x5t = generateSignedJwt().getHeader().getX509CertThumbprint();
-
-        assertNotNull(x5t, "INLINE resolver must emit x5t when its content carries a CERTIFICATE block and the toggle is enabled");
-        assertEquals(PINNED_PEM_WITH_CERT_X5T, x5t.toString());
+    static Stream<Arguments> leafCertificateResolverFixtures() {
+        return Stream.of(
+            Arguments.of(
+                "PKCS12",
+                (LeafResolverSetup) test -> {
+                    String keystorePath = test.uniqueCopy(GRAVITEEIO_P12, ".p12");
+                    test.stubPkcs12Resolver(keystorePath, GRAVITEEIO_P12_ALIAS, GRAVITEEIO_P12_STOREPASS);
+                    return test.loadPkcs12Leaf(keystorePath, GRAVITEEIO_P12_STOREPASS, GRAVITEEIO_P12_ALIAS);
+                },
+                PINNED_GRAVITEEIO_P12_X5T
+            ),
+            Arguments.of(
+                "PEM",
+                (LeafResolverSetup) test -> {
+                    String pemPath = test.uniqueCopy(PEM_WITH_CERT, ".pem");
+                    test.stubPemResolver(pemPath);
+                    return test.loadPemCertificate(pemPath);
+                },
+                PINNED_PEM_WITH_CERT_X5T
+            ),
+            Arguments.of(
+                "INLINE",
+                (LeafResolverSetup) test -> {
+                    String pem = test.fixtureText(PEM_WITH_CERT);
+                    test.stubInlineResolver(pem);
+                    return test.parsePemCertificate(pem);
+                },
+                PINNED_PEM_WITH_CERT_X5T
+            )
+        );
     }
 
     @ParameterizedTest
@@ -390,7 +401,7 @@ class GenerateJwtPolicyX5tThumbprintTest {
             "x5c[0] must be the signing certificate's DER even when the CA certificate appears first in the PEM content"
         );
         assertEquals(
-            sha1Base64Url(signingCertificate),
+            PINNED_PEM_WITH_CA_FIRST_CHAIN_X5T,
             header.get("x5t"),
             "x5t must be the SHA-1 thumbprint of x5c[0], the signing certificate"
         );
@@ -595,7 +606,20 @@ class GenerateJwtPolicyX5tThumbprintTest {
         return keyStore.getCertificateChain(alias);
     }
 
+    private X509Certificate loadPkcs12Leaf(String keystorePath, String storepass, String alias) throws Exception {
+        KeyStore keyStore = KeyStore.getInstance("PKCS12");
+        try (InputStream in = Files.newInputStream(Path.of(keystorePath))) {
+            keyStore.load(in, storepass.toCharArray());
+        }
+        return (X509Certificate) keyStore.getCertificateChain(alias)[0];
+    }
+
     private String sha1Base64Url(Certificate certificate) throws Exception {
         return Base64URL.encode(MessageDigest.getInstance("SHA-1").digest(certificate.getEncoded())).toString();
+    }
+
+    @FunctionalInterface
+    private interface LeafResolverSetup {
+        Certificate apply(GenerateJwtPolicyX5tThumbprintTest test) throws Exception;
     }
 }

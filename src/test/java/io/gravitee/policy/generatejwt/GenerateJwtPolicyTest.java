@@ -15,7 +15,9 @@
  */
 package io.gravitee.policy.generatejwt;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.Mockito.*;
 
@@ -43,15 +45,20 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.util.ArrayList;
 import java.util.List;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatcher;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.MockitoAnnotations;
 
 /**
@@ -93,6 +100,19 @@ public class GenerateJwtPolicyTest {
 
         when(templateEngine.convert(anyString())).thenAnswer(invMock -> invMock.getArgument(0));
         when(templateEngine.getValue(anyString(), any())).thenAnswer(invMock -> invMock.getArgument(0));
+
+        GenerateJwtPolicy.signers.clear();
+        GenerateJwtPolicy.certChains.clear();
+        GenerateJwtPolicy.leafCertificates.clear();
+        GenerateJwtPolicy.leafCertificatesSha256.clear();
+    }
+
+    @After
+    public void tearDown() {
+        GenerateJwtPolicy.signers.clear();
+        GenerateJwtPolicy.certChains.clear();
+        GenerateJwtPolicy.leafCertificates.clear();
+        GenerateJwtPolicy.leafCertificatesSha256.clear();
     }
 
     @Test
@@ -109,6 +129,19 @@ public class GenerateJwtPolicyTest {
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
         verify(policyChain, times(1)).failWith(any(PolicyResult.class));
+    }
+
+    @Test
+    public void shouldFail_rs256_withNullKeyResolver_viaGenericCatch() throws Exception {
+        when(configuration.getKeyResolver()).thenReturn(null);
+
+        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
+
+        ArgumentCaptor<PolicyResult> captor = ArgumentCaptor.forClass(PolicyResult.class);
+        verify(policyChain, times(1)).failWith(captor.capture());
+        assertEquals(500, captor.getValue().statusCode());
+        verify(policyChain, never()).doNext(any(), any());
+        verify(executionContext, never()).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), any());
     }
 
     @Test
@@ -321,7 +354,6 @@ public class GenerateJwtPolicyTest {
         verify(policyChain, times(1)).failWith(any(PolicyResult.class));
     }
 
-    // Alias here is intentionally wrong: a null storepass makes KeyStore.getEntry() throw before the alias is ever consulted, so this still pins the empty-storepass failure, not alias lookup.
     @Test
     public void shouldFail_jksResolver_emptyStorepass() throws Exception {
         when(configuration.getKeyResolver()).thenReturn(KeyResolver.JKS);
@@ -594,6 +626,17 @@ public class GenerateJwtPolicyTest {
         String sha1 = new GenerateJwtPolicy(configuration).sha1(input1);
 
         assertNotEquals(sha1, new GenerateJwtPolicy(configuration).sha1(input2));
+    }
+
+    @Test
+    public void shouldThrowUnchecked_whenSha1AlgorithmUnavailable() {
+        GenerateJwtPolicy policy = new GenerateJwtPolicy(configuration);
+
+        try (MockedStatic<MessageDigest> messageDigest = mockStatic(MessageDigest.class)) {
+            messageDigest.when(() -> MessageDigest.getInstance("SHA-1")).thenThrow(new NoSuchAlgorithmException("SHA-1 not available"));
+
+            assertThrows(RuntimeException.class, () -> policy.sha1("key-material"));
+        }
     }
 
     private boolean hasValidX509CertificateChain(final List<Base64> x509CertChain) {

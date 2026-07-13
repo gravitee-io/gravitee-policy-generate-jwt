@@ -140,7 +140,29 @@
     "x509CertSha1Thumbprint": {
       "type" : "boolean",
       "title": "Include x5t (SHA-1 certificate thumbprint)",
-      "description": "Whether the SHA-1 thumbprint of the signing certificate should be added as an x5t header. (only for RS256)",
+      "description": "Whether the SHA-1 thumbprint of the signing certificate should be added as an x5t header (RFC 7515 §4.1.7). Requires a certificate to be available from the configured key resolver; if enabled without one, the request will fail. (only for RS256)",
+      "default": false,
+      "x-schema-form": {
+        "disabled": [
+          {
+            "$eq": {
+              "signature": ["HMAC_HS256", "HMAC_HS384", "HMAC_HS512"]
+            }
+          }
+        ]
+      },
+      "gioConfig": {
+        "disableIf": {
+          "$eq": {
+            "value.signature": ["HMAC_HS256", "HMAC_HS384", "HMAC_HS512"]
+          }
+        }
+      }
+    },
+    "x509CertSha256Thumbprint": {
+      "type" : "boolean",
+      "title": "Include x5t#S256 (SHA-256 certificate thumbprint)",
+      "description": "Whether the SHA-256 thumbprint of the signing certificate should be added as an x5t#S256 header (RFC 7515 §4.1.8). Requires a certificate to be available from the configured key resolver; if enabled without one, the request will fail. (only for RS256)",
       "default": false,
       "x-schema-form": {
         "disabled": [

@@ -57,6 +57,9 @@ class GenerateJwtPolicyCertificateChainContaminationTest {
     @Mock
     private PolicyChain policyChain;
 
+    // No static-cache clearing here (unlike sibling test classes): uniqueCopy() below gives every invocation a distinct
+    // temp-file path, which cacheKeyMaterial() hashes into a guaranteed-unique cache key, so cross-test cache collision
+    // is structurally impossible in this class.
     @BeforeEach
     void init() {
         MockitoAnnotations.openMocks(this);
@@ -131,8 +134,6 @@ class GenerateJwtPolicyCertificateChainContaminationTest {
         return config;
     }
 
-    // No static-cache clear needed: routing content through uniqueCopy() gives every config a
-    // fresh randomized cache key, so a test can never collide with another test's signer-cache entry.
     private String uniqueCopy(String resource, String suffix) throws Exception {
         Path source = new File(GenerateJwtPolicy.class.getResource(resource).toURI()).toPath();
         Path target = Files.createTempFile("contamination-", suffix);
