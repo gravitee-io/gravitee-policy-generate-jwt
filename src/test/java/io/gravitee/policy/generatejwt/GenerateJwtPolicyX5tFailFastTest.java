@@ -20,6 +20,7 @@ import static org.mockito.Mockito.*;
 
 import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jose.util.Base64URL;
+import com.nimbusds.jose.util.JSONObjectUtils;
 import com.nimbusds.jwt.SignedJWT;
 import io.gravitee.el.TemplateEngine;
 import io.gravitee.gateway.api.ExecutionContext;
@@ -33,7 +34,6 @@ import io.gravitee.policy.generatejwt.configuration.KeyResolver;
 import io.gravitee.policy.generatejwt.configuration.X509CertificateChain;
 import java.io.FileInputStream;
 import java.io.InputStream;
-import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -41,6 +41,9 @@ import java.security.KeyStore;
 import java.security.cert.Certificate;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -84,6 +87,7 @@ class GenerateJwtPolicyX5tFailFastTest {
         GenerateJwtPolicy.signers.clear();
         GenerateJwtPolicy.certChains.clear();
         GenerateJwtPolicy.leafCertificates.clear();
+        GenerateJwtPolicy.leafCertificatesSha256.clear();
         when(executionContext.getTemplateEngine()).thenReturn(templateEngine);
         when(templateEngine.convert(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
         when(templateEngine.getValue(anyString(), any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -94,6 +98,7 @@ class GenerateJwtPolicyX5tFailFastTest {
         GenerateJwtPolicy.signers.clear();
         GenerateJwtPolicy.certChains.clear();
         GenerateJwtPolicy.leafCertificates.clear();
+        GenerateJwtPolicy.leafCertificatesSha256.clear();
     }
 
     @ParameterizedTest
@@ -114,11 +119,9 @@ class GenerateJwtPolicyX5tFailFastTest {
         verify(policyChain, times(2)).doNext(request, response);
         ArgumentCaptor<String> jwtCaptor = ArgumentCaptor.forClass(String.class);
         verify(executionContext, times(2)).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), jwtCaptor.capture());
-        SignedJWT signedJWT = SignedJWT.parse(jwtCaptor.getValue());
-        assertNull(
-            signedJWT.getHeader().getX509CertThumbprint(),
-            "an HMAC signature carries no certificate, so x5t must be silently ignored"
-        );
+        Map<String, Object> header = decodeHeader(jwtCaptor.getValue());
+        assertFalse(header.containsKey("x5t"), "an HMAC signature carries no certificate, so x5t must be silently ignored");
+        assertEquals(Set.of("alg"), header.keySet(), "an HMAC header must carry only the alg member");
     }
 
     @Test
@@ -136,11 +139,9 @@ class GenerateJwtPolicyX5tFailFastTest {
         verify(policyChain).doNext(request, response);
         ArgumentCaptor<String> jwtCaptor = ArgumentCaptor.forClass(String.class);
         verify(executionContext).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), jwtCaptor.capture());
-        SignedJWT signedJWT = SignedJWT.parse(jwtCaptor.getValue());
-        assertNull(
-            signedJWT.getHeader().getX509CertThumbprint(),
-            "an HMAC signature carries no certificate, so x5t must be silently ignored"
-        );
+        Map<String, Object> header = decodeHeader(jwtCaptor.getValue());
+        assertFalse(header.containsKey("x5t"), "an HMAC signature carries no certificate, so x5t must be silently ignored");
+        assertEquals(Set.of("alg"), header.keySet(), "an HMAC header must carry only the alg member");
     }
 
     @Test
@@ -176,7 +177,7 @@ class GenerateJwtPolicyX5tFailFastTest {
     }
 
     @ParameterizedTest
-    @CsvSource({ "JKS, EMPTY_SENTINEL", "JKS, MISSING_ENTRY", "PKCS12, EMPTY_SENTINEL", "PKCS12, MISSING_ENTRY" })
+    @CsvSource({ "JKS, EMPTY_ENTRY", "JKS, MISSING_ENTRY", "PKCS12, EMPTY_ENTRY", "PKCS12, MISSING_ENTRY" })
     void rejectsEveryRequestWith500_whenThumbprintToggleEnabledAndKeystoreYieldsNoLeafCertificate(
         KeyResolver keyResolver,
         String leafCertificateState
@@ -190,10 +191,10 @@ class GenerateJwtPolicyX5tFailFastTest {
         when(configuration.getContent()).thenReturn(keystorePath);
 
         GenerateJwtPolicy policy = new GenerateJwtPolicy(configuration);
-        String hash = cacheKey(policy);
+        String hash = policy.cacheKeyMaterial();
         GenerateJwtPolicy.signers.put(hash, new RSASSASigner(loadRealPrivateKeyEntry(keyResolver, keystorePath).getPrivateKey(), true));
-        if ("EMPTY_SENTINEL".equals(leafCertificateState)) {
-            GenerateJwtPolicy.leafCertificates.put(hash, new Base64URL(""));
+        if ("EMPTY_ENTRY".equals(leafCertificateState)) {
+            GenerateJwtPolicy.leafCertificates.put(hash, Optional.empty());
         }
 
         policy.onRequest(request, response, executionContext, policyChain);
@@ -216,11 +217,11 @@ class GenerateJwtPolicyX5tFailFastTest {
 
         policy.onRequest(request, response, executionContext, policyChain);
 
-        String hash = cacheKey(policy);
+        String hash = policy.cacheKeyMaterial();
         assertNotNull(GenerateJwtPolicy.signers.get(hash), "the signer load must complete despite the missing certificate");
-        Base64URL leafCertificate = GenerateJwtPolicy.leafCertificates.get(hash);
+        Optional<Base64URL> leafCertificate = GenerateJwtPolicy.leafCertificates.get(hash);
         assertNotNull(leafCertificate, "the degraded state must record a leaf-certificate entry for the content hash");
-        assertEquals("", leafCertificate.toString(), "the recorded leaf-certificate entry must be the empty sentinel");
+        assertTrue(leafCertificate.isEmpty(), "the recorded leaf-certificate entry must be empty");
     }
 
     @ParameterizedTest
@@ -251,11 +252,11 @@ class GenerateJwtPolicyX5tFailFastTest {
 
             policy.onRequest(request, response, executionContext, policyChain);
 
-            String hash = cacheKey(policy);
+            String hash = policy.cacheKeyMaterial();
             assertNotNull(GenerateJwtPolicy.signers.get(hash), "the signer load must complete despite the missing certificate chain");
-            Base64URL leafCertificate = GenerateJwtPolicy.leafCertificates.get(hash);
+            Optional<Base64URL> leafCertificate = GenerateJwtPolicy.leafCertificates.get(hash);
             assertNotNull(leafCertificate, "the degraded state must record a leaf-certificate entry for the content hash");
-            assertEquals("", leafCertificate.toString(), "the recorded leaf-certificate entry must be the empty sentinel");
+            assertTrue(leafCertificate.isEmpty(), "the recorded leaf-certificate entry must be empty");
         }
     }
 
@@ -494,6 +495,11 @@ class GenerateJwtPolicyX5tFailFastTest {
         }
     }
 
+    private Map<String, Object> decodeHeader(String jwt) throws Exception {
+        String protectedHeader = new String(Base64URL.from(jwt.split("\\.")[0]).decode(), StandardCharsets.UTF_8);
+        return JSONObjectUtils.parse(protectedHeader);
+    }
+
     private Certificate foreignLeafCertificate() throws Exception {
         String keystorePath = Path.of(getClass().getResource("/graviteeio-chain.jks").toURI()).toString();
         KeyStore keyStore = KeyStore.getInstance("JKS");
@@ -534,11 +540,5 @@ class GenerateJwtPolicyX5tFailFastTest {
         }
         String entryPassword = keyResolver == KeyResolver.JKS ? KEYSTORE_KEYPASS : KEYSTORE_STOREPASS;
         return (KeyStore.PrivateKeyEntry) keyStore.getEntry(KEYSTORE_ALIAS, new KeyStore.PasswordProtection(entryPassword.toCharArray()));
-    }
-
-    private String cacheKey(GenerateJwtPolicy policy) throws Exception {
-        Method cacheKeyMaterial = GenerateJwtPolicy.class.getDeclaredMethod("cacheKeyMaterial");
-        cacheKeyMaterial.setAccessible(true);
-        return policy.sha1((String) cacheKeyMaterial.invoke(policy));
     }
 }

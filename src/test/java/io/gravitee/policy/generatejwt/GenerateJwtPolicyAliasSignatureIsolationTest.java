@@ -75,12 +75,16 @@ class GenerateJwtPolicyAliasSignatureIsolationTest {
         MockitoAnnotations.openMocks(this);
         GenerateJwtPolicy.signers.clear();
         GenerateJwtPolicy.certChains.clear();
+        GenerateJwtPolicy.leafCertificates.clear();
+        GenerateJwtPolicy.leafCertificatesSha256.clear();
     }
 
     @AfterEach
     void cleanup() {
         GenerateJwtPolicy.signers.clear();
         GenerateJwtPolicy.certChains.clear();
+        GenerateJwtPolicy.leafCertificates.clear();
+        GenerateJwtPolicy.leafCertificatesSha256.clear();
     }
 
     @Test

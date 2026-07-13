@@ -63,6 +63,7 @@ class GenerateJwtPolicyX5cFailFastTest {
         GenerateJwtPolicy.signers.clear();
         GenerateJwtPolicy.certChains.clear();
         GenerateJwtPolicy.leafCertificates.clear();
+        GenerateJwtPolicy.leafCertificatesSha256.clear();
         when(executionContext.getTemplateEngine()).thenReturn(templateEngine);
         when(templateEngine.convert(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
         when(templateEngine.getValue(anyString(), any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -73,6 +74,7 @@ class GenerateJwtPolicyX5cFailFastTest {
         GenerateJwtPolicy.signers.clear();
         GenerateJwtPolicy.certChains.clear();
         GenerateJwtPolicy.leafCertificates.clear();
+        GenerateJwtPolicy.leafCertificatesSha256.clear();
     }
 
     @ParameterizedTest

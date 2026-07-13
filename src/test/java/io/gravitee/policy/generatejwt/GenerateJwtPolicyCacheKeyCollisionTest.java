@@ -19,7 +19,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.gravitee.policy.generatejwt.configuration.GenerateJwtPolicyConfiguration;
-import java.lang.reflect.Method;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
@@ -31,11 +30,11 @@ class GenerateJwtPolicyCacheKeyCollisionTest {
 
     @Test
     void shouldProduceDistinctCacheKeys_whenDelimiterCharacterShiftsContentAliasBoundary() throws Exception {
-        GenerateJwtPolicy policyA = new GenerateJwtPolicy(jksConfig("a|b", "c"));
-        GenerateJwtPolicy policyB = new GenerateJwtPolicy(jksConfig("a", "b|c"));
+        GenerateJwtPolicy policyA = new GenerateJwtPolicy(jksConfig("a.b", "c"));
+        GenerateJwtPolicy policyB = new GenerateJwtPolicy(jksConfig("a", "b.c"));
 
-        String cacheKeyA = policyA.sha1(cacheKeyMaterial(policyA));
-        String cacheKeyB = policyB.sha1(cacheKeyMaterial(policyB));
+        String cacheKeyA = policyA.cacheKeyMaterial();
+        String cacheKeyB = policyB.cacheKeyMaterial();
 
         assertThat(cacheKeyA)
             .as("two distinct (content, alias) pairs must not collide on the signer/certificate cache key")
@@ -47,11 +46,5 @@ class GenerateJwtPolicyCacheKeyCollisionTest {
             mapper.createObjectNode().put("keyResolver", "JKS").put("signature", "RSA_RS256").put("content", content).put("alias", alias)
         );
         return mapper.readValue(json, GenerateJwtPolicyConfiguration.class);
-    }
-
-    private String cacheKeyMaterial(GenerateJwtPolicy policy) throws Exception {
-        Method method = GenerateJwtPolicy.class.getDeclaredMethod("cacheKeyMaterial");
-        method.setAccessible(true);
-        return (String) method.invoke(policy);
     }
 }

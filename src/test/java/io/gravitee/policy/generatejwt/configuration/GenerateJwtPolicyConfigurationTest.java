@@ -38,6 +38,7 @@ public class GenerateJwtPolicyConfigurationTest {
         Assert.assertNull(configuration.getCustomClaims());
         Assert.assertEquals(KeyResolver.INLINE, configuration.getKeyResolver());
         Assert.assertFalse(configuration.isX509CertSha1Thumbprint());
+        Assert.assertFalse(configuration.isX509CertSha256Thumbprint());
     }
 
     @Test
@@ -47,6 +48,15 @@ public class GenerateJwtPolicyConfigurationTest {
         Assert.assertNotNull(configuration);
 
         Assert.assertTrue(configuration.isX509CertSha1Thumbprint());
+    }
+
+    @Test
+    public void shouldReadX509CertSha256Thumbprint() throws IOException {
+        GenerateJwtPolicyConfiguration configuration = load("/configuration/generatejwt04.json", GenerateJwtPolicyConfiguration.class);
+
+        Assert.assertNotNull(configuration);
+
+        Assert.assertTrue(configuration.isX509CertSha256Thumbprint());
     }
 
     @Test

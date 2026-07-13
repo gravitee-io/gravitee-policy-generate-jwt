@@ -49,6 +49,8 @@ public class GenerateJwtPolicyConfiguration implements PolicyConfiguration {
 
     private boolean x509CertSha1Thumbprint = false;
 
+    private boolean x509CertSha256Thumbprint = false;
+
     private List<String> audiences;
 
     private long expiresIn = 30;
