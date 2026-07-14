@@ -41,6 +41,7 @@ import io.gravitee.policy.api.PolicyResult;
 import io.gravitee.policy.api.annotations.OnRequest;
 import io.gravitee.policy.generatejwt.alg.Signature;
 import io.gravitee.policy.generatejwt.configuration.GenerateJwtPolicyConfiguration;
+import io.gravitee.policy.generatejwt.configuration.KeyResolver;
 import io.gravitee.policy.generatejwt.configuration.X509CertificateChain;
 import jakarta.xml.bind.DatatypeConverter;
 import java.io.ByteArrayInputStream;
@@ -203,11 +204,17 @@ public class GenerateJwtPolicy {
     private JWSHeader buildRsaHeader(String hash, PolicyChain policyChain) {
         JWSHeader.Builder builder = new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(configuration.getKid());
         if (configuration.getX509CertificateChain() == X509CertificateChain.X5C) {
-            List<Base64> certChain = resolveCertChain(hash, policyChain);
-            if (certChain == null) {
+            List<Base64> certChain = resolveCertChain(hash);
+            if (certChain != null) {
+                builder.x509CertChain(certChain);
+            } else if (!isKeystoreResolver()) {
+                log.error(
+                    "[generate-jwt] x5c certificate chain requested but no certificate chain is available for resolver {} — request rejected.",
+                    configuration.getKeyResolver().name()
+                );
+                policyChain.failWith(PolicyResult.failure(JWT_GENERATION_FAILURE_MESSAGE));
                 return null;
             }
-            builder.x509CertChain(certChain);
         }
         if (configuration.isX509CertSha1Thumbprint()) {
             Base64URL leafCertificate = resolveLeafCertificate(hash, policyChain);
@@ -226,15 +233,14 @@ public class GenerateJwtPolicy {
         return builder.build();
     }
 
-    private List<Base64> resolveCertChain(String hash, PolicyChain policyChain) {
-        return resolveRequiredHeaderValue(
-            certChains,
-            hash,
-            chain -> !chain.isEmpty(),
-            chain -> chain,
-            "[generate-jwt] x5c certificate chain requested but no certificate chain is available for resolver {} — request rejected.",
-            policyChain
-        );
+    private List<Base64> resolveCertChain(String hash) {
+        List<Base64> certChain = certChains.get(hash);
+        return (certChain == null || certChain.isEmpty()) ? null : certChain;
+    }
+
+    private boolean isKeystoreResolver() {
+        KeyResolver keyResolver = configuration.getKeyResolver();
+        return keyResolver == KeyResolver.JKS || keyResolver == KeyResolver.PKCS12;
     }
 
     private Base64URL resolveLeafCertificate(String hash, PolicyChain policyChain) {
@@ -350,7 +356,7 @@ public class GenerateJwtPolicy {
         return (RSAKey) JWK.parseFromPEMEncodedObjects(CERTIFICATE_PEM_BLOCK.matcher(pemContent).replaceAll(""));
     }
 
-    private void logSuppressedChainToggles(String reason) {
+    private void logSuppressedThumbprintToggles(String reason) {
         if (configuration.isX509CertSha1Thumbprint()) {
             log.error(
                 "[generate-jwt] x5t toggle enabled but {} for resolver {} — thumbprint cannot be computed.",
@@ -365,9 +371,13 @@ public class GenerateJwtPolicy {
                 configuration.getKeyResolver().name()
             );
         }
+    }
+
+    private void logSuppressedChainToggles(String reason) {
+        logSuppressedThumbprintToggles(reason);
         if (configuration.getX509CertificateChain() == X509CertificateChain.X5C) {
-            log.error(
-                "[generate-jwt] x5c certificate chain requested but {} for resolver {} — the request will be rejected.",
+            log.warn(
+                "[generate-jwt] x5c certificate chain requested but {} for resolver {} — the x5c header will be omitted.",
                 reason,
                 configuration.getKeyResolver().name()
             );
@@ -379,16 +389,6 @@ public class GenerateJwtPolicy {
         Certificate[] certificateChain = keyStore.getCertificateChain(configuration.getAlias());
         if (certificateChain == null || certificateChain.length == 0) {
             logSuppressedChainToggles("no certificate chain is available");
-            clearCertificateCaches(hash);
-            return;
-        }
-
-        if (leafMatchesSigningKey(certificateChain[0], signingKey, configuration.getKeyResolver().name()) == LeafMatchResult.MISMATCH) {
-            log.warn(
-                "[generate-jwt] keystore certificate chain leaf does not match the signing key for resolver {} — certificate chain will not be embedded.",
-                configuration.getKeyResolver().name()
-            );
-            logSuppressedChainToggles("the keystore certificate chain leaf does not match the signing key");
             clearCertificateCaches(hash);
             return;
         }
@@ -410,6 +410,21 @@ public class GenerateJwtPolicy {
         }
 
         certChains.put(hash, certChain);
+
+        if (leafMatchesSigningKey(certificateChain[0], signingKey, configuration.getKeyResolver().name()) == LeafMatchResult.MISMATCH) {
+            String chainEmbeddingOutcome = configuration.getX509CertificateChain() == X509CertificateChain.X5C
+                ? "the chain is embedded as x5c but no thumbprint is derived from it"
+                : "no thumbprint is derived from it";
+            log.warn(
+                "[generate-jwt] keystore certificate chain leaf does not match the signing key for resolver {} — {}.",
+                configuration.getKeyResolver().name(),
+                chainEmbeddingOutcome
+            );
+            logSuppressedThumbprintToggles("the keystore certificate chain leaf does not match the signing key");
+            leafCertificates.put(hash, Optional.empty());
+            leafCertificatesSha256.put(hash, Optional.empty());
+            return;
+        }
 
         var decodedCert = certChain.get(0).decode();
         leafCertificates.put(hash, Optional.of(computeX5t(decodedCert)));
