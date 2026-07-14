@@ -42,6 +42,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.Security;
@@ -54,6 +55,8 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.BasicConstraints;
 import org.bouncycastle.asn1.x509.Extension;
@@ -67,7 +70,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
@@ -146,27 +151,16 @@ class GenerateJwtPolicyX5cPemChainTest {
         );
     }
 
-    @Test
-    void silentNoOp_whenPemContentHasNoCertificateAndX5cIsOff() throws Exception {
-        String pemPath = uniqueCopy(PEM_NO_CERT);
-        String deployedConfigJson = String.format(
-            "{\"signature\":\"RSA_RS256\",\"keyResolver\":\"PEM\",\"content\":\"%s\",\"x509CertificateChain\":\"NONE\",\"x509CertSha1Thumbprint\":false}",
-            pemPath
-        );
+    @ParameterizedTest
+    @EnumSource(value = KeyResolver.class, names = { "PEM", "INLINE" })
+    void silentNoOp_whenContentHasNoCertificateAndX5cIsOff(KeyResolver keyResolver) throws Exception {
+        String content = keyResolver == KeyResolver.PEM ? uniqueCopy(PEM_NO_CERT) : fixtureText(PEM_NO_CERT);
 
-        GenerateJwtPolicyConfiguration configuration = new ObjectMapper()
-            .readValue(deployedConfigJson, GenerateJwtPolicyConfiguration.class);
-
-        assertSilentNoOp(configuration);
-    }
-
-    @Test
-    void silentNoOp_whenInlineContentHasNoCertificateAndX5cIsOff() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         ObjectNode config = mapper.createObjectNode();
         config.put("signature", "RSA_RS256");
-        config.put("keyResolver", "INLINE");
-        config.put("content", fixtureText(PEM_NO_CERT));
+        config.put("keyResolver", keyResolver.name());
+        config.put("content", content);
         config.put("x509CertificateChain", "NONE");
         config.put("x509CertSha1Thumbprint", false);
 
@@ -267,15 +261,8 @@ class GenerateJwtPolicyX5cPemChainTest {
         verify(executionContext, never()).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), any());
     }
 
-    @Test
-    void x5cChainIsOrderedLeafToRoot_whenPemBundleIsRootFirstWithThreeCertificates() throws Exception {
+    private static Stream<Arguments> x5cContentCases() throws Exception {
         Security.addProvider(new BouncyCastleProvider());
-
-        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-        keyPairGenerator.initialize(2048);
-        KeyPair rootKeyPair = keyPairGenerator.generateKeyPair();
-        KeyPair intermediateKeyPair = keyPairGenerator.generateKeyPair();
-        KeyPair leafKeyPair = keyPairGenerator.generateKeyPair();
 
         Date notBefore = Date.from(Instant.now().minusSeconds(3_600));
         Date notAfter = Date.from(Instant.now().plusSeconds(3_600 * 24 * 365));
@@ -283,44 +270,167 @@ class GenerateJwtPolicyX5cPemChainTest {
         X500Name rootSubject = new X500Name("CN=Test Root CA");
         X500Name intermediateSubject = new X500Name("CN=Test Intermediate CA");
         X500Name leafSubject = new X500Name("CN=Test Leaf");
+        X500Name unrelatedSubject = new X500Name("CN=Unrelated CA");
 
-        X509Certificate rootCert = buildCertificate(
-            rootSubject,
-            rootKeyPair.getPrivate(),
-            rootSubject,
-            rootKeyPair.getPublic(),
-            notBefore,
-            notAfter,
-            true
-        );
-        X509Certificate intermediateCert = buildCertificate(
-            rootSubject,
-            rootKeyPair.getPrivate(),
+        // Full chain, bundle order is deliberately root-first ([root, intermediate, leaf]) — the
+        // signing cert (leaf) is NOT first in the file, so a correct implementation must reorder by
+        // issuer/subject linkage rather than trusting file order for the non-signing certificates.
+        CertificateWithKey root = issueCertificate(rootSubject, null, null, true, notBefore, notAfter);
+        CertificateWithKey intermediate = issueCertificate(
             intermediateSubject,
-            intermediateKeyPair.getPublic(),
+            rootSubject,
+            root.keyPair().getPrivate(),
+            true,
             notBefore,
-            notAfter,
-            true
+            notAfter
         );
-        X509Certificate leafCert = buildCertificate(
-            intermediateSubject,
-            intermediateKeyPair.getPrivate(),
+        CertificateWithKey leaf = issueCertificate(
             leafSubject,
-            leafKeyPair.getPublic(),
+            intermediateSubject,
+            intermediate.keyPair().getPrivate(),
+            false,
             notBefore,
-            notAfter,
-            false
+            notAfter
         );
-
-        // Bundle order is deliberately root-first ([root, intermediate, leaf]) — the signing cert
-        // (leaf) is NOT first in the file, so a correct implementation must reorder by issuer/subject
-        // linkage rather than trusting file order for the non-signing certificates.
-        String pemContent =
-            pemEncodePrivateKey(leafKeyPair.getPrivate()) +
+        X509Certificate rootCert = root.certificate();
+        X509Certificate intermediateCert = intermediate.certificate();
+        X509Certificate leafCert = leaf.certificate();
+        String fullChainPem =
+            pemEncodePrivateKey(leaf.keyPair().getPrivate()) +
             "\n" +
             pemEncodeCertificate(rootCert) +
             "\n" +
             pemEncodeCertificate(intermediateCert) +
+            "\n" +
+            pemEncodeCertificate(leafCert);
+        List<String> fullChainExpected = List.of(
+            Base64.getEncoder().encodeToString(leafCert.getEncoded()),
+            Base64.getEncoder().encodeToString(intermediateCert.getEncoded()),
+            Base64.getEncoder().encodeToString(rootCert.getEncoded())
+        );
+
+        // No bundle certificate links to the leaf — the leaf's issuer has no matching certificate
+        // in the bundle, so the chain must contain only the leaf itself.
+        CertificateWithKey unrelatedForNoLink = issueCertificate(unrelatedSubject, null, null, true, notBefore, notAfter);
+        X500Name absentIntermediateSubject = new X500Name("CN=Absent Intermediate CA");
+        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+        keyPairGenerator.initialize(2048);
+        KeyPair absentIntermediateKeyPair = keyPairGenerator.generateKeyPair();
+        CertificateWithKey noLinkLeaf = issueCertificate(
+            leafSubject,
+            absentIntermediateSubject,
+            absentIntermediateKeyPair.getPrivate(),
+            false,
+            notBefore,
+            notAfter
+        );
+        X509Certificate noLinkLeafCert = noLinkLeaf.certificate();
+        String noLinkPem =
+            pemEncodePrivateKey(noLinkLeaf.keyPair().getPrivate()) +
+            "\n" +
+            pemEncodeCertificate(noLinkLeafCert) +
+            "\n" +
+            pemEncodeCertificate(unrelatedForNoLink.certificate());
+        List<String> noLinkExpected = List.of(Base64.getEncoder().encodeToString(noLinkLeafCert.getEncoded()));
+
+        // Bundle has a linked intermediate plus an unrelated CA — the unrelated certificate must be
+        // dropped while the linked intermediate is kept.
+        CertificateWithKey partialIntermediate = issueCertificate(intermediateSubject, null, null, true, notBefore, notAfter);
+        CertificateWithKey partialLeaf = issueCertificate(
+            leafSubject,
+            intermediateSubject,
+            partialIntermediate.keyPair().getPrivate(),
+            false,
+            notBefore,
+            notAfter
+        );
+        CertificateWithKey partialUnrelated = issueCertificate(unrelatedSubject, null, null, true, notBefore, notAfter);
+        X509Certificate partialIntermediateCert = partialIntermediate.certificate();
+        X509Certificate partialLeafCert = partialLeaf.certificate();
+        String partialDropPem =
+            pemEncodePrivateKey(partialLeaf.keyPair().getPrivate()) +
+            "\n" +
+            pemEncodeCertificate(partialLeafCert) +
+            "\n" +
+            pemEncodeCertificate(partialIntermediateCert) +
+            "\n" +
+            pemEncodeCertificate(partialUnrelated.certificate());
+        List<String> partialDropExpected = List.of(
+            Base64.getEncoder().encodeToString(partialLeafCert.getEncoded()),
+            Base64.getEncoder().encodeToString(partialIntermediateCert.getEncoded())
+        );
+
+        return Stream.of(
+            Arguments.of("x5cChainIsOrderedLeafToRoot_whenPemBundleIsRootFirstWithThreeCertificates", fullChainPem, fullChainExpected),
+            Arguments.of("x5cContainsOnlySigningCertificate_whenNoBundleCertificateLinksToIt", noLinkPem, noLinkExpected),
+            Arguments.of("x5cDropsUnlinkableCertificate_whenBundleHasLinkedIntermediateAndUnrelatedCa", partialDropPem, partialDropExpected)
+        );
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("x5cContentCases")
+    void x5cContainsExactlyTheLinkedChainInLeafToRootOrder(String caseName, String pemContent, List<String> expectedX5c) throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode config = mapper.createObjectNode();
+        config.put("signature", "RSA_RS256");
+        config.put("keyResolver", "INLINE");
+        config.put("content", pemContent);
+        config.put("x509CertificateChain", "X5C");
+        config.put("x509CertSha1Thumbprint", false);
+        GenerateJwtPolicyConfiguration configuration = mapper.treeToValue(config, GenerateJwtPolicyConfiguration.class);
+
+        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
+
+        verify(policyChain, never()).failWith(any());
+        verify(policyChain, times(1)).doNext(request, response);
+
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(executionContext, times(1)).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), captor.capture());
+        Map<String, Object> header = decodeHeader((String) captor.getValue());
+        List<?> x5c = (List<?>) header.get("x5c");
+
+        assertEquals(
+            expectedX5c,
+            x5c.stream().map(Object::toString).collect(Collectors.toList()),
+            "x5c must contain exactly the linked chain in leaf-first order, dropping any unlinkable certificate — case: " + caseName
+        );
+    }
+
+    @Test
+    void thumbprintsRemainSigningCertificateThumbprints_whenBundleTriggersCertificateDropping() throws Exception {
+        Security.addProvider(new BouncyCastleProvider());
+
+        Date notBefore = Date.from(Instant.now().minusSeconds(3_600));
+        Date notAfter = Date.from(Instant.now().plusSeconds(3_600 * 24 * 365));
+
+        X500Name intermediateSubject = new X500Name("CN=Test Intermediate CA");
+        X500Name leafSubject = new X500Name("CN=Test Leaf");
+        X500Name unrelatedSubject = new X500Name("CN=Unrelated CA");
+
+        CertificateWithKey intermediate = issueCertificate(intermediateSubject, null, null, true, notBefore, notAfter);
+        CertificateWithKey leaf = issueCertificate(
+            leafSubject,
+            intermediateSubject,
+            intermediate.keyPair().getPrivate(),
+            false,
+            notBefore,
+            notAfter
+        );
+        CertificateWithKey unrelated = issueCertificate(unrelatedSubject, null, null, true, notBefore, notAfter);
+
+        X509Certificate intermediateCert = intermediate.certificate();
+        X509Certificate leafCert = leaf.certificate();
+        X509Certificate unrelatedCaCert = unrelated.certificate();
+
+        // Bundle order is deliberately leaf-last ([intermediate, unrelated, leaf]) so a thumbprint
+        // wrongly derived from chain position 0 would differ from the signing (leaf) certificate's
+        // actual digest, making the leaf-vs-chain-position contract able to fail if it regresses.
+        String pemContent =
+            pemEncodePrivateKey(leaf.keyPair().getPrivate()) +
+            "\n" +
+            pemEncodeCertificate(intermediateCert) +
+            "\n" +
+            pemEncodeCertificate(unrelatedCaCert) +
             "\n" +
             pemEncodeCertificate(leafCert);
 
@@ -330,7 +440,8 @@ class GenerateJwtPolicyX5cPemChainTest {
         config.put("keyResolver", "INLINE");
         config.put("content", pemContent);
         config.put("x509CertificateChain", "X5C");
-        config.put("x509CertSha1Thumbprint", false);
+        config.put("x509CertSha1Thumbprint", true);
+        config.put("x509CertSha256Thumbprint", true);
         GenerateJwtPolicyConfiguration configuration = mapper.treeToValue(config, GenerateJwtPolicyConfiguration.class);
 
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
@@ -341,98 +452,23 @@ class GenerateJwtPolicyX5cPemChainTest {
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
         verify(executionContext, times(1)).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), captor.capture());
         Map<String, Object> header = decodeHeader((String) captor.getValue());
+
         List<?> x5c = (List<?>) header.get("x5c");
-
-        assertEquals(3, x5c.size(), "x5c must carry all three certificates from the PEM bundle");
         assertEquals(
-            Base64.getEncoder().encodeToString(leafCert.getEncoded()),
-            x5c.get(0).toString(),
-            "x5c[0] must be the signing (leaf) certificate"
+            2,
+            x5c.size(),
+            "pre-condition: the unrelated CA must be dropped so the bundle genuinely triggers certificate dropping"
         );
+
         assertEquals(
-            Base64.getEncoder().encodeToString(intermediateCert.getEncoded()),
-            x5c.get(1).toString(),
-            "x5c[1] must be the certificate that certifies the leaf (the intermediate), regardless of its position in the original PEM bundle"
-        );
-        assertEquals(
-            Base64.getEncoder().encodeToString(rootCert.getEncoded()),
-            x5c.get(2).toString(),
-            "x5c[2] must be the certificate that certifies the intermediate (the root)"
-        );
-    }
-
-    @Test
-    void x5cAppendsUnlinkableCertificateAsIs_whenLeafIssuerIsAbsentFromTheBundle() throws Exception {
-        Security.addProvider(new BouncyCastleProvider());
-
-        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-        keyPairGenerator.initialize(2048);
-        KeyPair intermediateKeyPair = keyPairGenerator.generateKeyPair();
-        KeyPair leafKeyPair = keyPairGenerator.generateKeyPair();
-        KeyPair unrelatedKeyPair = keyPairGenerator.generateKeyPair();
-
-        Date notBefore = Date.from(Instant.now().minusSeconds(3_600));
-        Date notAfter = Date.from(Instant.now().plusSeconds(3_600 * 24 * 365));
-
-        X500Name intermediateSubject = new X500Name("CN=Absent Intermediate CA");
-        X500Name leafSubject = new X500Name("CN=Test Leaf");
-        X500Name unrelatedSubject = new X500Name("CN=Unrelated CA");
-
-        X509Certificate leafCert = buildCertificate(
-            intermediateSubject,
-            intermediateKeyPair.getPrivate(),
-            leafSubject,
-            leafKeyPair.getPublic(),
-            notBefore,
-            notAfter,
-            false
-        );
-        X509Certificate unrelatedCaCert = buildCertificate(
-            unrelatedSubject,
-            unrelatedKeyPair.getPrivate(),
-            unrelatedSubject,
-            unrelatedKeyPair.getPublic(),
-            notBefore,
-            notAfter,
-            true
-        );
-
-        String pemContent =
-            pemEncodePrivateKey(leafKeyPair.getPrivate()) +
-            "\n" +
-            pemEncodeCertificate(leafCert) +
-            "\n" +
-            pemEncodeCertificate(unrelatedCaCert);
-
-        ObjectMapper mapper = new ObjectMapper();
-        ObjectNode config = mapper.createObjectNode();
-        config.put("signature", "RSA_RS256");
-        config.put("keyResolver", "INLINE");
-        config.put("content", pemContent);
-        config.put("x509CertificateChain", "X5C");
-        config.put("x509CertSha1Thumbprint", false);
-        GenerateJwtPolicyConfiguration configuration = mapper.treeToValue(config, GenerateJwtPolicyConfiguration.class);
-
-        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
-
-        verify(policyChain, never()).failWith(any());
-        verify(policyChain, times(1)).doNext(request, response);
-
-        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(executionContext, times(1)).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), captor.capture());
-        Map<String, Object> header = decodeHeader((String) captor.getValue());
-        List<?> x5c = (List<?>) header.get("x5c");
-
-        assertEquals(2, x5c.size(), "the unlinkable certificate must still be appended to x5c (degrade-gracefully behavior preserved)");
-        assertEquals(
-            Base64.getEncoder().encodeToString(leafCert.getEncoded()),
-            x5c.get(0).toString(),
-            "x5c[0] must be the signing (leaf) certificate"
+            Base64URL.encode(MessageDigest.getInstance("SHA-1").digest(leafCert.getEncoded())).toString(),
+            header.get("x5t"),
+            "x5t must be the SHA-1 thumbprint of the signing (leaf) certificate, never derived from the ordered/dropped chain"
         );
         assertEquals(
-            Base64.getEncoder().encodeToString(unrelatedCaCert.getEncoded()),
-            x5c.get(1).toString(),
-            "the certificate whose issuer linkage could not be resolved must be appended as-is"
+            Base64URL.encode(MessageDigest.getInstance("SHA-256").digest(leafCert.getEncoded())).toString(),
+            header.get("x5t#S256"),
+            "x5t#S256 must be the SHA-256 thumbprint of the signing (leaf) certificate, never derived from the ordered/dropped chain"
         );
     }
 
@@ -440,35 +476,18 @@ class GenerateJwtPolicyX5cPemChainTest {
     void x5cCertificateMatchesSigningKey_whenPemFileRotatedBetweenWarmUpAndX5cEnabled() throws Exception {
         Security.addProvider(new BouncyCastleProvider());
 
-        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-        keyPairGenerator.initialize(2048);
-        KeyPair originalKeyPair = keyPairGenerator.generateKeyPair();
-        KeyPair rotatedKeyPair = keyPairGenerator.generateKeyPair();
-
         Date notBefore = Date.from(Instant.now().minusSeconds(3_600));
         Date notAfter = Date.from(Instant.now().plusSeconds(3_600 * 24 * 365));
 
         X500Name originalSubject = new X500Name("CN=Original");
-        X500Name rotatedSubject = new X500Name("CN=Rotated");
+        CertificateWithKey original = issueCertificate(originalSubject, null, null, false, notBefore, notAfter);
+        KeyPair originalKeyPair = original.keyPair();
+        X509Certificate originalCert = original.certificate();
 
-        X509Certificate originalCert = buildCertificate(
-            originalSubject,
-            originalKeyPair.getPrivate(),
-            originalSubject,
-            originalKeyPair.getPublic(),
-            notBefore,
-            notAfter,
-            false
-        );
-        X509Certificate rotatedCert = buildCertificate(
-            rotatedSubject,
-            rotatedKeyPair.getPrivate(),
-            rotatedSubject,
-            rotatedKeyPair.getPublic(),
-            notBefore,
-            notAfter,
-            false
-        );
+        X500Name rotatedSubject = new X500Name("CN=Rotated");
+        CertificateWithKey rotated = issueCertificate(rotatedSubject, null, null, false, notBefore, notAfter);
+        KeyPair rotatedKeyPair = rotated.keyPair();
+        X509Certificate rotatedCert = rotated.certificate();
 
         Path pemFile = Files.createTempFile("rotating-", ".pem");
         pemFile.toFile().deleteOnExit();
@@ -512,6 +531,50 @@ class GenerateJwtPolicyX5cPemChainTest {
             signedJWT.verify(new RSASSAVerifier((RSAPublicKey) advertisedCert.getPublicKey())),
             "the JWT signature must verify against the public key of the certificate advertised in x5c — after an on-disk key rotation preceding x5c being enabled, the signing key and the advertised certificate must not diverge"
         );
+    }
+
+    private static final class CertificateWithKey {
+
+        private final X509Certificate certificate;
+        private final KeyPair keyPair;
+
+        private CertificateWithKey(X509Certificate certificate, KeyPair keyPair) {
+            this.certificate = certificate;
+            this.keyPair = keyPair;
+        }
+
+        private X509Certificate certificate() {
+            return certificate;
+        }
+
+        private KeyPair keyPair() {
+            return keyPair;
+        }
+    }
+
+    private static CertificateWithKey issueCertificate(
+        X500Name subject,
+        X500Name issuer,
+        PrivateKey issuerKey,
+        boolean isCa,
+        Date notBefore,
+        Date notAfter
+    ) throws Exception {
+        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+        keyPairGenerator.initialize(2048);
+        KeyPair keyPair = keyPairGenerator.generateKeyPair();
+
+        boolean selfSigned = issuer == null;
+        X509Certificate certificate = buildCertificate(
+            selfSigned ? subject : issuer,
+            selfSigned ? keyPair.getPrivate() : issuerKey,
+            subject,
+            keyPair.getPublic(),
+            notBefore,
+            notAfter,
+            isCa
+        );
+        return new CertificateWithKey(certificate, keyPair);
     }
 
     private static X509Certificate buildCertificate(
