@@ -328,15 +328,18 @@ class GenerateJwtPolicyX5tFailFastTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = KeyResolver.class, names = { "JKS", "PKCS12" })
-    void rejectsRequestWith500_whenX5cEnabledWithThumbprintToggleDisabledAndKeystoreCertificateChainIsNull(KeyResolver keyResolver)
-        throws Exception {
+    @CsvSource({ "JKS, NULL_CHAIN", "JKS, EMPTY_CHAIN", "PKCS12, NULL_CHAIN", "PKCS12, EMPTY_CHAIN" })
+    void signsWithoutX5cHeader_whenX5cEnabledWithThumbprintTogglesDisabledAndKeystoreCertificateChainIsNullOrEmpty(
+        KeyResolver keyResolver,
+        String chainState
+    ) throws Exception {
         String keystoreFile = keyResolver == KeyResolver.JKS ? "/graviteeio.jks" : "/graviteeio.p12";
         String keystorePath = Path.of(getClass().getResource(keystoreFile).toURI()).toString();
         KeyStore.PrivateKeyEntry realPrivateKeyEntry = loadRealPrivateKeyEntry(keyResolver, keystorePath);
 
         when(configuration.getSignature()).thenReturn(Signature.RSA_RS256);
         when(configuration.isX509CertSha1Thumbprint()).thenReturn(false);
+        when(configuration.isX509CertSha256Thumbprint()).thenReturn(false);
         when(configuration.getX509CertificateChain()).thenReturn(X509CertificateChain.X5C);
         when(configuration.getKeyResolver()).thenReturn(keyResolver);
         when(configuration.getContent()).thenReturn(keystorePath);
@@ -345,7 +348,8 @@ class GenerateJwtPolicyX5tFailFastTest {
         when(configuration.getKeypass()).thenReturn(KEYSTORE_KEYPASS);
 
         KeyStore chainlessKeyStore = mock(KeyStore.class);
-        when(chainlessKeyStore.getCertificateChain(KEYSTORE_ALIAS)).thenReturn(null);
+        Certificate[] certificateChain = "NULL_CHAIN".equals(chainState) ? null : new Certificate[0];
+        when(chainlessKeyStore.getCertificateChain(KEYSTORE_ALIAS)).thenReturn(certificateChain);
         when(chainlessKeyStore.getEntry(eq(KEYSTORE_ALIAS), any())).thenReturn(realPrivateKeyEntry);
 
         try (MockedStatic<KeyStore> keyStoreStatic = mockStatic(KeyStore.class)) {
@@ -355,7 +359,62 @@ class GenerateJwtPolicyX5tFailFastTest {
 
             policy.onRequest(request, response, executionContext, policyChain);
 
-            assertRejectedWith500(1);
+            verify(policyChain, never()).failWith(any());
+            verify(policyChain).doNext(request, response);
+            ArgumentCaptor<String> jwtCaptor = ArgumentCaptor.forClass(String.class);
+            verify(executionContext).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), jwtCaptor.capture());
+            SignedJWT signedJWT = SignedJWT.parse(jwtCaptor.getValue());
+            assertNull(
+                signedJWT.getHeader().getX509CertChain(),
+                "no x5c header may be emitted when the keystore returns no certificate chain"
+            );
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({ "JKS, NULL_CHAIN", "JKS, EMPTY_CHAIN", "PKCS12, NULL_CHAIN", "PKCS12, EMPTY_CHAIN" })
+    void reOmitsX5cOnWarmRequestWithoutReReadingKeystore_whenX5cEnabledWithThumbprintTogglesDisabledAndKeystoreCertificateChainIsNullOrEmpty(
+        KeyResolver keyResolver,
+        String chainState
+    ) throws Exception {
+        String keystoreFile = keyResolver == KeyResolver.JKS ? "/graviteeio.jks" : "/graviteeio.p12";
+        String keystorePath = Path.of(getClass().getResource(keystoreFile).toURI()).toString();
+        KeyStore.PrivateKeyEntry realPrivateKeyEntry = loadRealPrivateKeyEntry(keyResolver, keystorePath);
+
+        when(configuration.getSignature()).thenReturn(Signature.RSA_RS256);
+        when(configuration.isX509CertSha1Thumbprint()).thenReturn(false);
+        when(configuration.isX509CertSha256Thumbprint()).thenReturn(false);
+        when(configuration.getX509CertificateChain()).thenReturn(X509CertificateChain.X5C);
+        when(configuration.getKeyResolver()).thenReturn(keyResolver);
+        when(configuration.getContent()).thenReturn(keystorePath);
+        when(configuration.getAlias()).thenReturn(KEYSTORE_ALIAS);
+        when(configuration.getStorepass()).thenReturn(KEYSTORE_STOREPASS);
+        when(configuration.getKeypass()).thenReturn(KEYSTORE_KEYPASS);
+
+        KeyStore chainlessKeyStore = mock(KeyStore.class);
+        Certificate[] certificateChain = "NULL_CHAIN".equals(chainState) ? null : new Certificate[0];
+        when(chainlessKeyStore.getCertificateChain(KEYSTORE_ALIAS)).thenReturn(certificateChain);
+        when(chainlessKeyStore.getEntry(eq(KEYSTORE_ALIAS), any())).thenReturn(realPrivateKeyEntry);
+
+        try (MockedStatic<KeyStore> keyStoreStatic = mockStatic(KeyStore.class)) {
+            keyStoreStatic.when(() -> KeyStore.getInstance(keyResolver.name())).thenReturn(chainlessKeyStore);
+
+            GenerateJwtPolicy policy = new GenerateJwtPolicy(configuration);
+
+            policy.onRequest(request, response, executionContext, policyChain);
+            policy.onRequest(request, response, executionContext, policyChain);
+
+            verify(policyChain, never()).failWith(any());
+            verify(policyChain, times(2)).doNext(request, response);
+            verify(chainlessKeyStore, times(1)).getCertificateChain(KEYSTORE_ALIAS);
+            ArgumentCaptor<String> jwtCaptor = ArgumentCaptor.forClass(String.class);
+            verify(executionContext, times(2)).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), jwtCaptor.capture());
+            for (String jwt : jwtCaptor.getAllValues()) {
+                assertNull(
+                    SignedJWT.parse(jwt).getHeader().getX509CertChain(),
+                    "no x5c header may be emitted on either the cold or the warm request when the keystore returns no certificate chain"
+                );
+            }
         }
     }
 
@@ -492,6 +551,167 @@ class GenerateJwtPolicyX5tFailFastTest {
             policy.onRequest(request, response, executionContext, policyChain);
 
             assertRejectedWith500(2);
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = KeyResolver.class, names = { "JKS", "PKCS12" })
+    void embedsKeystoreCertificateChainAsX5c_whenLeafDoesNotMatchSigningKeyAndThumbprintTogglesDisabled(KeyResolver keyResolver)
+        throws Exception {
+        String keystoreFile = keyResolver == KeyResolver.JKS ? "/graviteeio.jks" : "/graviteeio.p12";
+        String keystorePath = Path.of(getClass().getResource(keystoreFile).toURI()).toString();
+        KeyStore.PrivateKeyEntry realPrivateKeyEntry = loadRealPrivateKeyEntry(keyResolver, keystorePath);
+        Certificate foreignCertificate = foreignLeafCertificate();
+        Certificate[] mismatchedChain = { foreignCertificate, realPrivateKeyEntry.getCertificate() };
+
+        assertFalse(
+            Arrays.equals(realPrivateKeyEntry.getCertificate().getPublicKey().getEncoded(), foreignCertificate.getPublicKey().getEncoded()),
+            "pre-condition: the keystore chain's leaf certificate must carry a different public key than the resolved signing key"
+        );
+
+        when(configuration.getSignature()).thenReturn(Signature.RSA_RS256);
+        when(configuration.isX509CertSha1Thumbprint()).thenReturn(false);
+        when(configuration.isX509CertSha256Thumbprint()).thenReturn(false);
+        when(configuration.getX509CertificateChain()).thenReturn(X509CertificateChain.X5C);
+        when(configuration.getKeyResolver()).thenReturn(keyResolver);
+        when(configuration.getContent()).thenReturn(keystorePath);
+        when(configuration.getAlias()).thenReturn(KEYSTORE_ALIAS);
+        when(configuration.getStorepass()).thenReturn(KEYSTORE_STOREPASS);
+        when(configuration.getKeypass()).thenReturn(KEYSTORE_KEYPASS);
+
+        KeyStore mismatchedKeyStore = mock(KeyStore.class);
+        when(mismatchedKeyStore.getCertificateChain(KEYSTORE_ALIAS)).thenReturn(mismatchedChain);
+        when(mismatchedKeyStore.getEntry(eq(KEYSTORE_ALIAS), any())).thenReturn(realPrivateKeyEntry);
+
+        try (MockedStatic<KeyStore> keyStoreStatic = mockStatic(KeyStore.class)) {
+            keyStoreStatic.when(() -> KeyStore.getInstance(keyResolver.name())).thenReturn(mismatchedKeyStore);
+
+            GenerateJwtPolicy policy = new GenerateJwtPolicy(configuration);
+
+            policy.onRequest(request, response, executionContext, policyChain);
+
+            verify(policyChain, never()).failWith(any());
+            verify(policyChain).doNext(request, response);
+            ArgumentCaptor<String> jwtCaptor = ArgumentCaptor.forClass(String.class);
+            verify(executionContext).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), jwtCaptor.capture());
+            SignedJWT signedJWT = SignedJWT.parse(jwtCaptor.getValue());
+            var x5c = signedJWT.getHeader().getX509CertChain();
+            assertNotNull(x5c, "x5c must be populated from the keystore chain even though the leaf does not match the signing key");
+            assertEquals(mismatchedChain.length, x5c.size(), "x5c must contain every certificate returned by the keystore chain");
+            for (int i = 0; i < mismatchedChain.length; i++) {
+                assertArrayEquals(
+                    mismatchedChain[i].getEncoded(),
+                    x5c.get(i).decode(),
+                    "x5c entry " + i + " must be the keystore chain certificate, byte-for-byte, in keystore order"
+                );
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = KeyResolver.class, names = { "JKS", "PKCS12" })
+    void emitsHeaderWithOnlyAlgAndX5cMembers_whenLeafDoesNotMatchSigningKeyAndThumbprintTogglesDisabled(KeyResolver keyResolver)
+        throws Exception {
+        String keystoreFile = keyResolver == KeyResolver.JKS ? "/graviteeio.jks" : "/graviteeio.p12";
+        String keystorePath = Path.of(getClass().getResource(keystoreFile).toURI()).toString();
+        KeyStore.PrivateKeyEntry realPrivateKeyEntry = loadRealPrivateKeyEntry(keyResolver, keystorePath);
+        Certificate foreignCertificate = foreignLeafCertificate();
+        Certificate[] mismatchedChain = { foreignCertificate, realPrivateKeyEntry.getCertificate() };
+
+        assertFalse(
+            Arrays.equals(realPrivateKeyEntry.getCertificate().getPublicKey().getEncoded(), foreignCertificate.getPublicKey().getEncoded()),
+            "pre-condition: the keystore chain's leaf certificate must carry a different public key than the resolved signing key"
+        );
+
+        when(configuration.getSignature()).thenReturn(Signature.RSA_RS256);
+        when(configuration.isX509CertSha1Thumbprint()).thenReturn(false);
+        when(configuration.isX509CertSha256Thumbprint()).thenReturn(false);
+        when(configuration.getX509CertificateChain()).thenReturn(X509CertificateChain.X5C);
+        when(configuration.getKeyResolver()).thenReturn(keyResolver);
+        when(configuration.getContent()).thenReturn(keystorePath);
+        when(configuration.getAlias()).thenReturn(KEYSTORE_ALIAS);
+        when(configuration.getStorepass()).thenReturn(KEYSTORE_STOREPASS);
+        when(configuration.getKeypass()).thenReturn(KEYSTORE_KEYPASS);
+
+        KeyStore mismatchedKeyStore = mock(KeyStore.class);
+        when(mismatchedKeyStore.getCertificateChain(KEYSTORE_ALIAS)).thenReturn(mismatchedChain);
+        when(mismatchedKeyStore.getEntry(eq(KEYSTORE_ALIAS), any())).thenReturn(realPrivateKeyEntry);
+
+        try (MockedStatic<KeyStore> keyStoreStatic = mockStatic(KeyStore.class)) {
+            keyStoreStatic.when(() -> KeyStore.getInstance(keyResolver.name())).thenReturn(mismatchedKeyStore);
+
+            GenerateJwtPolicy policy = new GenerateJwtPolicy(configuration);
+
+            policy.onRequest(request, response, executionContext, policyChain);
+
+            verify(policyChain, never()).failWith(any());
+            verify(policyChain).doNext(request, response);
+            ArgumentCaptor<String> jwtCaptor = ArgumentCaptor.forClass(String.class);
+            verify(executionContext).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), jwtCaptor.capture());
+            Map<String, Object> header = decodeHeader(jwtCaptor.getValue());
+            assertEquals(
+                Set.of("alg", "x5c"),
+                header.keySet(),
+                "the leaf-mismatch header must carry exactly alg and x5c — no x5t/x5t#S256 member may leak in when the thumbprint toggles are off"
+            );
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = KeyResolver.class, names = { "JKS", "PKCS12" })
+    void reEmitsCachedX5cOnWarmRequestWithoutReReadingKeystore_whenLeafDoesNotMatchSigningKeyAndThumbprintTogglesDisabled(
+        KeyResolver keyResolver
+    ) throws Exception {
+        String keystoreFile = keyResolver == KeyResolver.JKS ? "/graviteeio.jks" : "/graviteeio.p12";
+        String keystorePath = Path.of(getClass().getResource(keystoreFile).toURI()).toString();
+        KeyStore.PrivateKeyEntry realPrivateKeyEntry = loadRealPrivateKeyEntry(keyResolver, keystorePath);
+        Certificate foreignCertificate = foreignLeafCertificate();
+        Certificate[] mismatchedChain = { foreignCertificate, realPrivateKeyEntry.getCertificate() };
+
+        assertFalse(
+            Arrays.equals(realPrivateKeyEntry.getCertificate().getPublicKey().getEncoded(), foreignCertificate.getPublicKey().getEncoded()),
+            "pre-condition: the keystore chain's leaf certificate must carry a different public key than the resolved signing key"
+        );
+
+        when(configuration.getSignature()).thenReturn(Signature.RSA_RS256);
+        when(configuration.isX509CertSha1Thumbprint()).thenReturn(false);
+        when(configuration.isX509CertSha256Thumbprint()).thenReturn(false);
+        when(configuration.getX509CertificateChain()).thenReturn(X509CertificateChain.X5C);
+        when(configuration.getKeyResolver()).thenReturn(keyResolver);
+        when(configuration.getContent()).thenReturn(keystorePath);
+        when(configuration.getAlias()).thenReturn(KEYSTORE_ALIAS);
+        when(configuration.getStorepass()).thenReturn(KEYSTORE_STOREPASS);
+        when(configuration.getKeypass()).thenReturn(KEYSTORE_KEYPASS);
+
+        KeyStore mismatchedKeyStore = mock(KeyStore.class);
+        when(mismatchedKeyStore.getCertificateChain(KEYSTORE_ALIAS)).thenReturn(mismatchedChain);
+        when(mismatchedKeyStore.getEntry(eq(KEYSTORE_ALIAS), any())).thenReturn(realPrivateKeyEntry);
+
+        try (MockedStatic<KeyStore> keyStoreStatic = mockStatic(KeyStore.class)) {
+            keyStoreStatic.when(() -> KeyStore.getInstance(keyResolver.name())).thenReturn(mismatchedKeyStore);
+
+            GenerateJwtPolicy policy = new GenerateJwtPolicy(configuration);
+
+            policy.onRequest(request, response, executionContext, policyChain);
+            policy.onRequest(request, response, executionContext, policyChain);
+
+            verify(policyChain, never()).failWith(any());
+            verify(policyChain, times(2)).doNext(request, response);
+            verify(mismatchedKeyStore, times(1)).getCertificateChain(KEYSTORE_ALIAS);
+            ArgumentCaptor<String> jwtCaptor = ArgumentCaptor.forClass(String.class);
+            verify(executionContext, times(2)).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), jwtCaptor.capture());
+            for (String jwt : jwtCaptor.getAllValues()) {
+                var x5c = SignedJWT.parse(jwt).getHeader().getX509CertChain();
+                assertNotNull(x5c, "x5c must be re-emitted from the persisted chain cache on both the cold and the warm request");
+                assertEquals(mismatchedChain.length, x5c.size(), "x5c must contain every certificate returned by the keystore chain");
+                for (int i = 0; i < mismatchedChain.length; i++) {
+                    assertArrayEquals(
+                        mismatchedChain[i].getEncoded(),
+                        x5c.get(i).decode(),
+                        "x5c entry " + i + " must be the keystore chain certificate, byte-for-byte, in keystore order"
+                    );
+                }
+            }
         }
     }
 
