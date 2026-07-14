@@ -554,15 +554,14 @@ public class GenerateJwtPolicy {
             current = issuer;
         }
         // Any certificate whose issuer linkage couldn't be resolved (unrelated or malformed bundle)
-        // is appended as-is rather than dropped, so x5c degrades gracefully instead of losing data.
+        // is dropped rather than appended, so x5c only carries a valid RFC 7515 §4.1.6 linkage.
         if (!remaining.isEmpty()) {
             log.warn(
-                "[generate-jwt] The x5c certificate chain for resolver {} is incomplete: {} certificate(s) could not be linked to the signing certificate and are appended unordered.",
+                "[generate-jwt] The x5c certificate chain for resolver {} is incomplete: {} certificate(s) could not be linked to the signing certificate and were dropped from x5c.",
                 resolverName,
                 remaining.size()
             );
         }
-        ordered.addAll(remaining);
         return ordered;
     }
 
