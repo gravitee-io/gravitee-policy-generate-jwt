@@ -15,21 +15,18 @@
  */
 package io.gravitee.policy.generatejwt;
 
+import static io.gravitee.policy.generatejwt.X5cTestSupport.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jose.util.Base64URL;
-import com.nimbusds.jose.util.JSONObjectUtils;
 import com.nimbusds.jwt.SignedJWT;
 import io.gravitee.el.TemplateEngine;
 import io.gravitee.gateway.api.ExecutionContext;
 import io.gravitee.gateway.api.Request;
 import io.gravitee.gateway.api.Response;
 import io.gravitee.policy.api.PolicyChain;
-import io.gravitee.policy.api.PolicyResult;
 import io.gravitee.policy.generatejwt.configuration.GenerateJwtPolicyConfiguration;
 import io.gravitee.policy.generatejwt.configuration.KeyResolver;
 import io.gravitee.reporter.api.http.Metrics;
@@ -79,9 +76,6 @@ import org.mockito.MockitoAnnotations;
 
 class GenerateJwtPolicyX5cPemChainTest {
 
-    private static final String PEM_WITH_CERT = "/priv-with-cert.pem";
-    private static final String PEM_NO_CERT = "/priv.pem";
-
     @Mock
     private ExecutionContext executionContext;
 
@@ -118,147 +112,12 @@ class GenerateJwtPolicyX5cPemChainTest {
         GenerateJwtPolicy.leafCertificatesSha256.clear();
     }
 
-    @Test
-    void x5cHeaderCarriesPemCertificate_whenPemResolverConfiguresX5cWithThumbprintDisabled() throws Exception {
-        String pemPath = uniqueCopy(PEM_WITH_CERT);
-        String deployedConfigJson = String.format(
-            "{\"signature\":\"RSA_RS256\",\"keyResolver\":\"PEM\",\"content\":\"%s\",\"x509CertificateChain\":\"X5C\",\"x509CertSha1Thumbprint\":false}",
-            pemPath
-        );
-
-        GenerateJwtPolicyConfiguration configuration = new ObjectMapper()
-            .readValue(deployedConfigJson, GenerateJwtPolicyConfiguration.class);
-
-        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
-
-        verify(policyChain, never()).failWith(any());
-        verify(policyChain, times(1)).doNext(request, response);
-
-        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(executionContext, times(1)).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), captor.capture());
-        Map<String, Object> header = decodeHeader((String) captor.getValue());
-
-        assertTrue(
-            header.containsKey("x5c"),
-            "PEM resolver with X5C configured must emit an x5c header from the certificate embedded in the PEM content"
-        );
-        List<?> x5c = (List<?>) header.get("x5c");
-        assertFalse(x5c.isEmpty(), "x5c must be a non-empty chain");
-        assertEquals(
-            Base64.getEncoder().encodeToString(loadPemCertificate(pemPath).getEncoded()),
-            x5c.get(0).toString(),
-            "x5c[0] must be the standard-Base64 DER of the certificate embedded in the PEM content"
-        );
-    }
-
     @ParameterizedTest
-    @EnumSource(value = KeyResolver.class, names = { "PEM", "INLINE" })
+    @EnumSource(value = KeyResolver.class, names = { RESOLVER_PEM, RESOLVER_INLINE })
     void silentNoOp_whenContentHasNoCertificateAndX5cIsOff(KeyResolver keyResolver) throws Exception {
         String content = keyResolver == KeyResolver.PEM ? uniqueCopy(PEM_NO_CERT) : fixtureText(PEM_NO_CERT);
 
-        ObjectMapper mapper = new ObjectMapper();
-        ObjectNode config = mapper.createObjectNode();
-        config.put("signature", "RSA_RS256");
-        config.put("keyResolver", keyResolver.name());
-        config.put("content", content);
-        config.put("x509CertificateChain", "NONE");
-        config.put("x509CertSha1Thumbprint", false);
-
-        GenerateJwtPolicyConfiguration configuration = mapper.treeToValue(config, GenerateJwtPolicyConfiguration.class);
-
-        assertSilentNoOp(configuration);
-    }
-
-    @Test
-    void rejectsRequest_whenX5cRequestedButPemCertificateDoesNotMatchSigningKey() throws Exception {
-        String mismatchedPem = fixtureText(PEM_NO_CERT) + "\n" + certificateBlock(PEM_WITH_CERT);
-
-        ObjectMapper mapper = new ObjectMapper();
-        ObjectNode config = mapper.createObjectNode();
-        config.put("signature", "RSA_RS256");
-        config.put("keyResolver", "INLINE");
-        config.put("content", mismatchedPem);
-        config.put("x509CertificateChain", "X5C");
-        config.put("x509CertSha1Thumbprint", false);
-
-        GenerateJwtPolicyConfiguration configuration = mapper.treeToValue(config, GenerateJwtPolicyConfiguration.class);
-
-        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
-
-        ArgumentCaptor<PolicyResult> captor = ArgumentCaptor.forClass(PolicyResult.class);
-        verify(policyChain, times(1)).failWith(captor.capture());
-        assertEquals(
-            500,
-            captor.getValue().statusCode(),
-            "x5c requested with a certificate not matching the signing key must fail with HTTP 500"
-        );
-        verify(policyChain, never()).doNext(any(), any());
-        verify(executionContext, never()).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), any());
-    }
-
-    @Test
-    void rejectsX5cRequest_whenSharedCacheWasPrimedByEarlierX5tOnlyRequestWithUnmatchedCertificate() throws Exception {
-        String mismatchedPem = fixtureText(PEM_NO_CERT) + "\n" + certificateBlock(PEM_WITH_CERT);
-
-        ObjectMapper mapper = new ObjectMapper();
-
-        ObjectNode thumbprintOnlyConfig = mapper.createObjectNode();
-        thumbprintOnlyConfig.put("signature", "RSA_RS256");
-        thumbprintOnlyConfig.put("keyResolver", "INLINE");
-        thumbprintOnlyConfig.put("content", mismatchedPem);
-        thumbprintOnlyConfig.put("x509CertificateChain", "NONE");
-        thumbprintOnlyConfig.put("x509CertSha1Thumbprint", true);
-        GenerateJwtPolicyConfiguration thumbprintOnly = mapper.treeToValue(thumbprintOnlyConfig, GenerateJwtPolicyConfiguration.class);
-
-        new GenerateJwtPolicy(thumbprintOnly).onRequest(request, response, executionContext, policyChain);
-
-        ObjectNode x5cConfig = mapper.createObjectNode();
-        x5cConfig.put("signature", "RSA_RS256");
-        x5cConfig.put("keyResolver", "INLINE");
-        x5cConfig.put("content", mismatchedPem);
-        x5cConfig.put("x509CertificateChain", "X5C");
-        x5cConfig.put("x509CertSha1Thumbprint", false);
-        GenerateJwtPolicyConfiguration x5c = mapper.treeToValue(x5cConfig, GenerateJwtPolicyConfiguration.class);
-
-        PolicyChain x5cPolicyChain = mock(PolicyChain.class);
-        ExecutionContext x5cExecutionContext = mock(ExecutionContext.class);
-        when(x5cExecutionContext.getTemplateEngine()).thenReturn(templateEngine);
-
-        new GenerateJwtPolicy(x5c).onRequest(request, response, x5cExecutionContext, x5cPolicyChain);
-
-        ArgumentCaptor<PolicyResult> captor = ArgumentCaptor.forClass(PolicyResult.class);
-        verify(x5cPolicyChain, times(1)).failWith(captor.capture());
-        assertEquals(
-            500,
-            captor.getValue().statusCode(),
-            "x5c requested against a cache primed by an unmatched-certificate thumbprint request must fail with HTTP 500"
-        );
-        verify(x5cPolicyChain, never()).doNext(any(), any());
-        verify(x5cExecutionContext, never()).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), any());
-    }
-
-    @ParameterizedTest
-    @EnumSource(value = KeyResolver.class, names = { "PEM", "INLINE" })
-    void rejectsRequestWith500_whenX5cRequestedAndContentHasNoCertificateBlock(KeyResolver keyResolver) throws Exception {
-        String content = keyResolver == KeyResolver.PEM ? uniqueCopy(PEM_NO_CERT) : fixtureText(PEM_NO_CERT);
-
-        ObjectMapper mapper = new ObjectMapper();
-        ObjectNode config = mapper.createObjectNode();
-        config.put("signature", "RSA_RS256");
-        config.put("keyResolver", keyResolver.name());
-        config.put("content", content);
-        config.put("x509CertificateChain", "X5C");
-        config.put("x509CertSha1Thumbprint", false);
-
-        GenerateJwtPolicyConfiguration configuration = mapper.treeToValue(config, GenerateJwtPolicyConfiguration.class);
-
-        new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
-
-        ArgumentCaptor<PolicyResult> captor = ArgumentCaptor.forClass(PolicyResult.class);
-        verify(policyChain, times(1)).failWith(captor.capture());
-        assertEquals(500, captor.getValue().statusCode(), "x5c requested with no certificate block must fail with HTTP 500");
-        verify(policyChain, never()).doNext(any(), any());
-        verify(executionContext, never()).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), any());
+        assertSilentNoOp(rsaConfiguration(keyResolver, content, X509_CERTIFICATE_CHAIN_NONE, false, false));
     }
 
     private static Stream<Arguments> x5cContentCases() throws Exception {
@@ -360,24 +219,48 @@ class GenerateJwtPolicyX5cPemChainTest {
             Base64.getEncoder().encodeToString(partialIntermediateCert.getEncoded())
         );
 
+        // PEM resolver row: the only case reaching addLeafCertificate through getSigner's file-read
+        // branch rather than its inline-string branch.
+        String pemFixturePath = uniqueCopy(PEM_WITH_CERT);
+        List<String> pemFixtureExpected = List.of(Base64.getEncoder().encodeToString(loadPemCertificate(pemFixturePath).getEncoded()));
+
         return Stream.of(
-            Arguments.of("x5cChainIsOrderedLeafToRoot_whenPemBundleIsRootFirstWithThreeCertificates", fullChainPem, fullChainExpected),
-            Arguments.of("x5cContainsOnlySigningCertificate_whenNoBundleCertificateLinksToIt", noLinkPem, noLinkExpected),
-            Arguments.of("x5cDropsUnlinkableCertificate_whenBundleHasLinkedIntermediateAndUnrelatedCa", partialDropPem, partialDropExpected)
+            Arguments.of(
+                "x5cChainIsOrderedLeafToRoot_whenPemBundleIsRootFirstWithThreeCertificates",
+                KeyResolver.INLINE,
+                fullChainPem,
+                fullChainExpected
+            ),
+            Arguments.of(
+                "x5cContainsOnlySigningCertificate_whenNoBundleCertificateLinksToIt",
+                KeyResolver.INLINE,
+                noLinkPem,
+                noLinkExpected
+            ),
+            Arguments.of(
+                "x5cDropsUnlinkableCertificate_whenBundleHasLinkedIntermediateAndUnrelatedCa",
+                KeyResolver.INLINE,
+                partialDropPem,
+                partialDropExpected
+            ),
+            Arguments.of(
+                "x5cCarriesTheEmbeddedCertificate_whenPemResolverReadsItFromFile",
+                KeyResolver.PEM,
+                pemFixturePath,
+                pemFixtureExpected
+            )
         );
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("x5cContentCases")
-    void x5cContainsExactlyTheLinkedChainInLeafToRootOrder(String caseName, String pemContent, List<String> expectedX5c) throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        ObjectNode config = mapper.createObjectNode();
-        config.put("signature", "RSA_RS256");
-        config.put("keyResolver", "INLINE");
-        config.put("content", pemContent);
-        config.put("x509CertificateChain", "X5C");
-        config.put("x509CertSha1Thumbprint", false);
-        GenerateJwtPolicyConfiguration configuration = mapper.treeToValue(config, GenerateJwtPolicyConfiguration.class);
+    void x5cContainsExactlyTheLinkedChainInLeafToRootOrder(
+        String caseName,
+        KeyResolver keyResolver,
+        String content,
+        List<String> expectedX5c
+    ) throws Exception {
+        GenerateJwtPolicyConfiguration configuration = rsaConfiguration(keyResolver, content, X509_CERTIFICATE_CHAIN_X5C, false, false);
 
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
@@ -387,8 +270,15 @@ class GenerateJwtPolicyX5cPemChainTest {
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
         verify(executionContext, times(1)).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), captor.capture());
         Map<String, Object> header = decodeHeader((String) captor.getValue());
-        List<?> x5c = (List<?>) header.get("x5c");
 
+        assertEquals(
+            Set.of(HEADER_ALG, HEADER_X5C),
+            header.keySet(),
+            "x5c must be the only member added with both thumbprint toggles off — addLeafCertificate warms the thumbprint caches whenever a signing certificate is found, so only the config check keeps x5t out — case: " +
+            caseName
+        );
+
+        var x5c = (List<?>) header.get(HEADER_X5C);
         assertEquals(
             expectedX5c,
             x5c.stream().map(Object::toString).collect(Collectors.toList()),
@@ -434,15 +324,13 @@ class GenerateJwtPolicyX5cPemChainTest {
             "\n" +
             pemEncodeCertificate(leafCert);
 
-        ObjectMapper mapper = new ObjectMapper();
-        ObjectNode config = mapper.createObjectNode();
-        config.put("signature", "RSA_RS256");
-        config.put("keyResolver", "INLINE");
-        config.put("content", pemContent);
-        config.put("x509CertificateChain", "X5C");
-        config.put("x509CertSha1Thumbprint", true);
-        config.put("x509CertSha256Thumbprint", true);
-        GenerateJwtPolicyConfiguration configuration = mapper.treeToValue(config, GenerateJwtPolicyConfiguration.class);
+        GenerateJwtPolicyConfiguration configuration = rsaConfiguration(
+            KeyResolver.INLINE,
+            pemContent,
+            X509_CERTIFICATE_CHAIN_X5C,
+            true,
+            true
+        );
 
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
@@ -453,7 +341,7 @@ class GenerateJwtPolicyX5cPemChainTest {
         verify(executionContext, times(1)).setAttribute(eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED), captor.capture());
         Map<String, Object> header = decodeHeader((String) captor.getValue());
 
-        List<?> x5c = (List<?>) header.get("x5c");
+        var x5c = (List<?>) header.get(HEADER_X5C);
         assertEquals(
             2,
             x5c.size(),
@@ -489,32 +377,20 @@ class GenerateJwtPolicyX5cPemChainTest {
         KeyPair rotatedKeyPair = rotated.keyPair();
         X509Certificate rotatedCert = rotated.certificate();
 
-        Path pemFile = Files.createTempFile("rotating-", ".pem");
+        Path pemFile = Files.createTempFile("rotating-", PEM_FILE_SUFFIX);
         pemFile.toFile().deleteOnExit();
         Files.writeString(pemFile, pemEncodePrivateKey(originalKeyPair.getPrivate()) + "\n" + pemEncodeCertificate(originalCert));
 
-        ObjectMapper mapper = new ObjectMapper();
+        String pemPath = pemFile.toAbsolutePath().toString();
 
-        ObjectNode warmUpConfig = mapper.createObjectNode();
-        warmUpConfig.put("signature", "RSA_RS256");
-        warmUpConfig.put("keyResolver", "PEM");
-        warmUpConfig.put("content", pemFile.toAbsolutePath().toString());
-        warmUpConfig.put("x509CertificateChain", "NONE");
-        warmUpConfig.put("x509CertSha1Thumbprint", false);
-        GenerateJwtPolicyConfiguration warmUp = mapper.treeToValue(warmUpConfig, GenerateJwtPolicyConfiguration.class);
+        GenerateJwtPolicyConfiguration warmUp = rsaConfiguration(KeyResolver.PEM, pemPath, X509_CERTIFICATE_CHAIN_NONE, false, false);
         new GenerateJwtPolicy(warmUp).onRequest(request, response, executionContext, policyChain);
 
         Files.writeString(pemFile, pemEncodePrivateKey(rotatedKeyPair.getPrivate()) + "\n" + pemEncodeCertificate(rotatedCert));
 
         clearInvocations(policyChain, executionContext);
 
-        ObjectNode x5cConfig = mapper.createObjectNode();
-        x5cConfig.put("signature", "RSA_RS256");
-        x5cConfig.put("keyResolver", "PEM");
-        x5cConfig.put("content", pemFile.toAbsolutePath().toString());
-        x5cConfig.put("x509CertificateChain", "X5C");
-        x5cConfig.put("x509CertSha1Thumbprint", false);
-        GenerateJwtPolicyConfiguration x5c = mapper.treeToValue(x5cConfig, GenerateJwtPolicyConfiguration.class);
+        GenerateJwtPolicyConfiguration x5c = rsaConfiguration(KeyResolver.PEM, pemPath, X509_CERTIFICATE_CHAIN_X5C, false, false);
         new GenerateJwtPolicy(x5c).onRequest(request, response, executionContext, policyChain);
 
         verify(policyChain, never()).failWith(any());
@@ -524,7 +400,7 @@ class GenerateJwtPolicyX5cPemChainTest {
         SignedJWT signedJWT = SignedJWT.parse((String) captor.getValue());
         List<com.nimbusds.jose.util.Base64> x5cChain = signedJWT.getHeader().getX509CertChain();
         X509Certificate advertisedCert = (X509Certificate) CertificateFactory
-            .getInstance("X.509")
+            .getInstance(X509_CERTIFICATE_TYPE)
             .generateCertificate(new ByteArrayInputStream(x5cChain.get(0).decode()));
 
         assertTrue(
@@ -616,11 +492,6 @@ class GenerateJwtPolicyX5cPemChainTest {
         );
     }
 
-    private String certificateBlock(String resource) throws Exception {
-        String pem = fixtureText(resource);
-        return pem.substring(pem.indexOf("-----BEGIN CERTIFICATE-----"));
-    }
-
     private void assertSilentNoOp(GenerateJwtPolicyConfiguration configuration) throws Exception {
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
@@ -632,34 +503,25 @@ class GenerateJwtPolicyX5cPemChainTest {
         Map<String, Object> header = decodeHeader((String) captor.getValue());
 
         assertEquals(
-            Set.of("alg"),
+            Set.of(HEADER_ALG),
             header.keySet(),
             "content with no CERTIFICATE block and X5C off must keep a minimal header: no x5c, no x5t"
         );
     }
 
-    private String fixtureText(String resource) throws Exception {
-        return Files.readString(new File(GenerateJwtPolicy.class.getResource(resource).toURI()).toPath());
-    }
-
-    private Map<String, Object> decodeHeader(String jwt) throws Exception {
-        String protectedHeader = new String(Base64URL.from(jwt.split("\\.")[0]).decode(), StandardCharsets.UTF_8);
-        return JSONObjectUtils.parse(protectedHeader);
-    }
-
-    private String uniqueCopy(String resource) throws Exception {
+    private static String uniqueCopy(String resource) throws Exception {
         Path source = new File(GenerateJwtPolicy.class.getResource(resource).toURI()).toPath();
-        Path target = Files.createTempFile("x5c-pem-", ".pem");
+        Path target = Files.createTempFile("x5c-pem-", PEM_FILE_SUFFIX);
         target.toFile().deleteOnExit();
         Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
         return target.toAbsolutePath().toString();
     }
 
-    private X509Certificate loadPemCertificate(String pemPath) throws Exception {
+    private static X509Certificate loadPemCertificate(String pemPath) throws Exception {
         String pem = Files.readString(Path.of(pemPath));
         String certPem = pem.substring(pem.indexOf("-----BEGIN CERTIFICATE-----"));
         return (X509Certificate) CertificateFactory
-            .getInstance("X.509")
+            .getInstance(X509_CERTIFICATE_TYPE)
             .generateCertificate(new ByteArrayInputStream(certPem.getBytes(StandardCharsets.UTF_8)));
     }
 }
