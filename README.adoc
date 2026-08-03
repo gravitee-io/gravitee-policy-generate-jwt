@@ -82,19 +82,19 @@ When a signed JWT is generated, it is put in the `jwt.generated` attribute of th
 
 .^|x509CertificateChain
 ^.^|-
-|Whether the X.509 certificate chain of the signing certificate should be added as an x5c header. Only applies when using an RSA signature; if enabled without a resolvable certificate/chain in the key material, all requests are rejected with a 500. Ignored when using an HMAC algorithm.
+|Whether the X.509 certificate chain of the signing certificate should be added as an x5c header. Only applies when using an RSA signature. If enabled without a resolvable certificate/chain in the key material, the x5c header is omitted and the request proceeds instead of being rejected. Any diagnostic for this is logged once, when the key material is first loaded, rather than on every request. Ignored when using an HMAC algorithm.
 ^.^|NONE, X5C
 ^.^|NONE
 
 .^|x509CertSha1Thumbprint
 ^.^|-
-|Whether the SHA-1 thumbprint of the signing certificate should be added as an x5t header. Only applies when using an RSA signature; if enabled without a resolvable certificate in the key material, all requests are rejected with a 500. Ignored when using an HMAC algorithm.
+|Whether the SHA-1 thumbprint of the signing certificate should be added as an x5t header. Only applies when using an RSA signature; if enabled without a resolvable certificate in the key material, all requests are rejected with a 500 — unlike x5c, the request is rejected rather than the header being omitted. Ignored when using an HMAC algorithm.
 ^.^|boolean
 ^.^|false
 
 .^|x509CertSha256Thumbprint
 ^.^|-
-|Whether the SHA-256 thumbprint of the signing certificate should be added as an x5t#S256 header. Only applies when using an RSA signature; if enabled without a resolvable certificate in the key material, all requests are rejected with a 500. Ignored when using an HMAC algorithm.
+|Whether the SHA-256 thumbprint of the signing certificate should be added as an x5t#S256 header. Only applies when using an RSA signature; if enabled without a resolvable certificate in the key material, all requests are rejected with a 500 — unlike x5c, the request is rejected rather than the header being omitted. Ignored when using an HMAC algorithm.
 ^.^|boolean
 ^.^|false
 
@@ -141,6 +141,6 @@ You can read the token using Expression Language:
 |Code |Message
 
 | ```500```
-| Unexpected error while creating and signing the token
+| Unable to generate JWT token
 
 |===

@@ -41,7 +41,6 @@ import io.gravitee.policy.api.PolicyResult;
 import io.gravitee.policy.api.annotations.OnRequest;
 import io.gravitee.policy.generatejwt.alg.Signature;
 import io.gravitee.policy.generatejwt.configuration.GenerateJwtPolicyConfiguration;
-import io.gravitee.policy.generatejwt.configuration.KeyResolver;
 import io.gravitee.policy.generatejwt.configuration.X509CertificateChain;
 import jakarta.xml.bind.DatatypeConverter;
 import java.io.ByteArrayInputStream;
@@ -207,13 +206,6 @@ public class GenerateJwtPolicy {
             List<Base64> certChain = resolveCertChain(hash);
             if (certChain != null) {
                 builder.x509CertChain(certChain);
-            } else if (!isKeystoreResolver()) {
-                log.error(
-                    "[generate-jwt] x5c certificate chain requested but no certificate chain is available for resolver {} — request rejected.",
-                    configuration.getKeyResolver().name()
-                );
-                policyChain.failWith(PolicyResult.failure(JWT_GENERATION_FAILURE_MESSAGE));
-                return null;
             }
         }
         if (configuration.isX509CertSha1Thumbprint()) {
@@ -236,11 +228,6 @@ public class GenerateJwtPolicy {
     private List<Base64> resolveCertChain(String hash) {
         List<Base64> certChain = certChains.get(hash);
         return (certChain == null || certChain.isEmpty()) ? null : certChain;
-    }
-
-    private boolean isKeystoreResolver() {
-        KeyResolver keyResolver = configuration.getKeyResolver();
-        return keyResolver == KeyResolver.JKS || keyResolver == KeyResolver.PKCS12;
     }
 
     private Base64URL resolveLeafCertificate(String hash, PolicyChain policyChain) {
@@ -373,22 +360,39 @@ public class GenerateJwtPolicy {
         }
     }
 
-    private void logSuppressedChainToggles(String reason) {
+    private void logCertificateChainNotEmbedded(String reason) {
+        log.warn(
+            "[generate-jwt] {} for resolver {} — certificate chain will not be embedded ({}).",
+            reason,
+            configuration.getKeyResolver().name(),
+            describeActiveCertificateDiagnosticToggles()
+        );
+    }
+
+    private void logCertificateChainUnavailable(String reason) {
+        logCertificateChainNotEmbedded(reason);
         logSuppressedThumbprintToggles(reason);
+    }
+
+    private String describeActiveCertificateDiagnosticToggles() {
+        List<String> toggles = new ArrayList<>();
         if (configuration.getX509CertificateChain() == X509CertificateChain.X5C) {
-            log.warn(
-                "[generate-jwt] x5c certificate chain requested but {} for resolver {} — the x5c header will be omitted.",
-                reason,
-                configuration.getKeyResolver().name()
-            );
+            toggles.add("x5c");
         }
+        if (configuration.isX509CertSha1Thumbprint()) {
+            toggles.add("x5t");
+        }
+        if (configuration.isX509CertSha256Thumbprint()) {
+            toggles.add("x5t#S256");
+        }
+        return toggles.isEmpty() ? "no diagnostic toggles active" : String.join(", ", toggles) + " requested";
     }
 
     private void addCertificateChain(String hash, KeyStore keyStore, PrivateKey signingKey)
         throws KeyStoreException, NoSuchAlgorithmException {
         Certificate[] certificateChain = keyStore.getCertificateChain(configuration.getAlias());
         if (certificateChain == null || certificateChain.length == 0) {
-            logSuppressedChainToggles("no certificate chain is available");
+            logCertificateChainUnavailable("no certificate chain is available");
             clearCertificateCaches(hash);
             return;
         }
@@ -493,28 +497,7 @@ public class GenerateJwtPolicy {
 
         X509Certificate signingCertificate = findSigningCertificate(certificates, signingKey);
         if (signingCertificate == null) {
-            log.warn(
-                "[generate-jwt] no certificate in the key material matches the signing key for resolver {} — certificate chain will not be embedded.",
-                configuration.getKeyResolver().name()
-            );
-            if (configuration.isX509CertSha1Thumbprint()) {
-                log.error(
-                    "[generate-jwt] x5t toggle enabled but no certificate in the key material matches the signing key for resolver {} — thumbprint cannot be computed.",
-                    configuration.getKeyResolver().name()
-                );
-            }
-            if (configuration.isX509CertSha256Thumbprint()) {
-                log.error(
-                    "[generate-jwt] x5t#S256 toggle enabled but no certificate in the key material matches the signing key for resolver {} — thumbprint cannot be computed.",
-                    configuration.getKeyResolver().name()
-                );
-            }
-            if (configuration.getX509CertificateChain() == X509CertificateChain.X5C) {
-                log.error(
-                    "[generate-jwt] x5c certificate chain requested but no certificate in the key material matches the signing key for resolver {} — the request will be rejected.",
-                    configuration.getKeyResolver().name()
-                );
-            }
+            logCertificateChainUnavailable("no certificate in the key material matches the signing key");
             clearCertificateCaches(hash);
             return;
         }
