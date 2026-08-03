@@ -362,15 +362,30 @@ public class GenerateJwtPolicy {
 
     private void logCertificateChainNotEmbedded(String reason) {
         log.warn(
-            "[generate-jwt] {} for resolver {} — certificate chain will not be embedded.",
+            "[generate-jwt] {} for resolver {} — certificate chain will not be embedded ({}).",
             reason,
-            configuration.getKeyResolver().name()
+            configuration.getKeyResolver().name(),
+            describeActiveCertificateDiagnosticToggles()
         );
     }
 
     private void logCertificateChainUnavailable(String reason) {
         logCertificateChainNotEmbedded(reason);
         logSuppressedThumbprintToggles(reason);
+    }
+
+    private String describeActiveCertificateDiagnosticToggles() {
+        List<String> toggles = new ArrayList<>();
+        if (configuration.getX509CertificateChain() == X509CertificateChain.X5C) {
+            toggles.add("x5c");
+        }
+        if (configuration.isX509CertSha1Thumbprint()) {
+            toggles.add("x5t");
+        }
+        if (configuration.isX509CertSha256Thumbprint()) {
+            toggles.add("x5t#S256");
+        }
+        return toggles.isEmpty() ? "no diagnostic toggles active" : String.join(", ", toggles) + " requested";
     }
 
     private void addCertificateChain(String hash, KeyStore keyStore, PrivateKey signingKey)
