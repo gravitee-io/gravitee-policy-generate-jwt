@@ -52,7 +52,7 @@ When a signed JWT is generated, it is put in the `jwt.generated` attribute of th
 
 .^|kid
 ^.^|-
-|key ID (`kid`) to include in the JWT header
+|Key ID (`kid`) to include in the JWT header
 ^.^|string
 ^.^|-
 
