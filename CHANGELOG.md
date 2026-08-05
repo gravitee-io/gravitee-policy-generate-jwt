@@ -1,3 +1,10 @@
+# [1.9.0-alpha.3](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.9.0-alpha.2...1.9.0-alpha.3) (2026-08-05)
+
+
+### Bug Fixes
+
+* capitalize Key ID in README configuration table ([0d2a9dd](https://github.com/gravitee-io/gravitee-policy-generate-jwt/commit/0d2a9dda2661784d56c5d947fff2a3aa2e179329))
+
 # [1.9.0-alpha.2](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.9.0-alpha.1...1.9.0-alpha.2) (2026-07-13)
 
 
