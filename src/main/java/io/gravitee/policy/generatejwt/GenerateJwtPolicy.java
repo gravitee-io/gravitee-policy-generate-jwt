@@ -177,11 +177,10 @@ public class GenerateJwtPolicy {
                         addCertificateChain(hash, keyStore, configuration);
                     }
 
-                    pkEntry =
-                        (KeyStore.PrivateKeyEntry) keyStore.getEntry(
-                            configuration.getAlias(),
-                            new KeyStore.PasswordProtection(configuration.getStorepass().toCharArray())
-                        );
+                    pkEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(
+                        configuration.getAlias(),
+                        new KeyStore.PasswordProtection(configuration.getStorepass().toCharArray())
+                    );
 
                     signer = new RSASSASigner(pkEntry.getPrivateKey(), true);
 
@@ -204,8 +203,7 @@ public class GenerateJwtPolicy {
         throws KeyStoreException {
         certChains.put(
             hash,
-            Arrays
-                .stream(keyStore.getCertificateChain(configuration.getAlias()))
+            Arrays.stream(keyStore.getCertificateChain(configuration.getAlias()))
                 .map(c -> {
                     try {
                         return Base64.encode(c.getEncoded());

@@ -137,21 +137,20 @@ public class GenerateJwtPolicyTest {
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
         verify(policyChain, times(1)).doNext(request, response);
-        verify(executionContext, times(1))
-            .setAttribute(
-                eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
-                argThat(
-                    (ArgumentMatcher<String>) jwt -> {
-                        try {
-                            SignedJWT signedJWT = SignedJWT.parse(jwt);
-                            JWSHeader jwsHeader = signedJWT.getHeader();
-                            return jwsHeader.getAlgorithm() == JWSAlgorithm.RS256 && jwsHeader.getKeyID() == null;
-                        } catch (Exception ex) {
-                            return false;
-                        }
+        verify(executionContext, times(1)).setAttribute(
+            eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
+            argThat(
+                (ArgumentMatcher<String>) jwt -> {
+                    try {
+                        SignedJWT signedJWT = SignedJWT.parse(jwt);
+                        JWSHeader jwsHeader = signedJWT.getHeader();
+                        return jwsHeader.getAlgorithm() == JWSAlgorithm.RS256 && jwsHeader.getKeyID() == null;
+                    } catch (Exception ex) {
+                        return false;
                     }
-                )
-            );
+                }
+            )
+        );
     }
 
     @Test
@@ -167,21 +166,20 @@ public class GenerateJwtPolicyTest {
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
         verify(policyChain, times(1)).doNext(request, response);
-        verify(executionContext, times(1))
-            .setAttribute(
-                eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
-                argThat(
-                    (ArgumentMatcher<String>) jwt -> {
-                        try {
-                            SignedJWT signedJWT = SignedJWT.parse(jwt);
-                            JWSHeader jwsHeader = signedJWT.getHeader();
-                            return jwsHeader.getAlgorithm() == JWSAlgorithm.HS256 && jwsHeader.getKeyID() == null;
-                        } catch (Exception ex) {
-                            return false;
-                        }
+        verify(executionContext, times(1)).setAttribute(
+            eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
+            argThat(
+                (ArgumentMatcher<String>) jwt -> {
+                    try {
+                        SignedJWT signedJWT = SignedJWT.parse(jwt);
+                        JWSHeader jwsHeader = signedJWT.getHeader();
+                        return jwsHeader.getAlgorithm() == JWSAlgorithm.HS256 && jwsHeader.getKeyID() == null;
+                    } catch (Exception ex) {
+                        return false;
                     }
-                )
-            );
+                }
+            )
+        );
     }
 
     @Test
@@ -192,21 +190,20 @@ public class GenerateJwtPolicyTest {
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
         verify(policyChain, times(1)).doNext(request, response);
-        verify(executionContext, times(1))
-            .setAttribute(
-                eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
-                argThat(
-                    (ArgumentMatcher<String>) jwt -> {
-                        try {
-                            SignedJWT signedJWT = SignedJWT.parse(jwt);
-                            JWSHeader jwsHeader = signedJWT.getHeader();
-                            return jwsHeader.getAlgorithm() == JWSAlgorithm.RS256 && jwsHeader.getKeyID().equals("my-kid");
-                        } catch (Exception ex) {
-                            return false;
-                        }
+        verify(executionContext, times(1)).setAttribute(
+            eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
+            argThat(
+                (ArgumentMatcher<String>) jwt -> {
+                    try {
+                        SignedJWT signedJWT = SignedJWT.parse(jwt);
+                        JWSHeader jwsHeader = signedJWT.getHeader();
+                        return jwsHeader.getAlgorithm() == JWSAlgorithm.RS256 && jwsHeader.getKeyID().equals("my-kid");
+                    } catch (Exception ex) {
+                        return false;
                     }
-                )
-            );
+                }
+            )
+        );
     }
 
     @Test
@@ -218,21 +215,20 @@ public class GenerateJwtPolicyTest {
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
         verify(policyChain, times(1)).doNext(request, response);
-        verify(executionContext, times(1))
-            .setAttribute(
-                eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
-                argThat(
-                    (ArgumentMatcher<String>) jwt -> {
-                        try {
-                            SignedJWT signedJWT = SignedJWT.parse(jwt);
-                            JWSHeader jwsHeader = signedJWT.getHeader();
-                            return jwsHeader.getAlgorithm() == JWSAlgorithm.RS256 && jwsHeader.getKeyID().equals("my-kid");
-                        } catch (Exception ex) {
-                            return false;
-                        }
+        verify(executionContext, times(1)).setAttribute(
+            eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
+            argThat(
+                (ArgumentMatcher<String>) jwt -> {
+                    try {
+                        SignedJWT signedJWT = SignedJWT.parse(jwt);
+                        JWSHeader jwsHeader = signedJWT.getHeader();
+                        return jwsHeader.getAlgorithm() == JWSAlgorithm.RS256 && jwsHeader.getKeyID().equals("my-kid");
+                    } catch (Exception ex) {
+                        return false;
                     }
-                )
-            );
+                }
+            )
+        );
     }
 
     @Test
@@ -248,25 +244,24 @@ public class GenerateJwtPolicyTest {
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
         verify(policyChain, times(1)).doNext(request, response);
-        verify(executionContext, times(1))
-            .setAttribute(
-                eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
-                argThat(
-                    (ArgumentMatcher<String>) jwt -> {
-                        try {
-                            SignedJWT signedJWT = SignedJWT.parse(jwt);
-                            JWSHeader jwsHeader = signedJWT.getHeader();
-                            return (
-                                jwsHeader.getAlgorithm() == JWSAlgorithm.RS256 &&
-                                jwsHeader.getKeyID().equals("my-kid") &&
-                                hasValidX509CertificateChain(jwsHeader.getX509CertChain())
-                            );
-                        } catch (Exception ex) {
-                            return false;
-                        }
+        verify(executionContext, times(1)).setAttribute(
+            eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
+            argThat(
+                (ArgumentMatcher<String>) jwt -> {
+                    try {
+                        SignedJWT signedJWT = SignedJWT.parse(jwt);
+                        JWSHeader jwsHeader = signedJWT.getHeader();
+                        return (
+                            jwsHeader.getAlgorithm() == JWSAlgorithm.RS256 &&
+                            jwsHeader.getKeyID().equals("my-kid") &&
+                            hasValidX509CertificateChain(jwsHeader.getX509CertChain())
+                        );
+                    } catch (Exception ex) {
+                        return false;
                     }
-                )
-            );
+                }
+            )
+        );
     }
 
     @Test
@@ -327,25 +322,24 @@ public class GenerateJwtPolicyTest {
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
         verify(policyChain, times(1)).doNext(request, response);
-        verify(executionContext, times(1))
-            .setAttribute(
-                eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
-                argThat(
-                    (ArgumentMatcher<String>) jwt -> {
-                        try {
-                            SignedJWT signedJWT = SignedJWT.parse(jwt);
-                            JWSHeader jwsHeader = signedJWT.getHeader();
-                            return (
-                                jwsHeader.getAlgorithm() == JWSAlgorithm.RS256 &&
-                                jwsHeader.getKeyID().equals("my-kid") &&
-                                jwsHeader.getX509CertChain() == null
-                            );
-                        } catch (Exception ex) {
-                            return false;
-                        }
+        verify(executionContext, times(1)).setAttribute(
+            eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
+            argThat(
+                (ArgumentMatcher<String>) jwt -> {
+                    try {
+                        SignedJWT signedJWT = SignedJWT.parse(jwt);
+                        JWSHeader jwsHeader = signedJWT.getHeader();
+                        return (
+                            jwsHeader.getAlgorithm() == JWSAlgorithm.RS256 &&
+                            jwsHeader.getKeyID().equals("my-kid") &&
+                            jwsHeader.getX509CertChain() == null
+                        );
+                    } catch (Exception ex) {
+                        return false;
                     }
-                )
-            );
+                }
+            )
+        );
 
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
     }
@@ -375,21 +369,20 @@ public class GenerateJwtPolicyTest {
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
         verify(policyChain, times(1)).doNext(request, response);
-        verify(executionContext, times(1))
-            .setAttribute(
-                eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
-                argThat(
-                    (ArgumentMatcher<String>) jwt -> {
-                        try {
-                            SignedJWT signedJWT = SignedJWT.parse(jwt);
-                            JWSHeader jwsHeader = signedJWT.getHeader();
-                            return jwsHeader.getAlgorithm() == JWSAlgorithm.HS256 && jwsHeader.getKeyID().equals("my-kid");
-                        } catch (Exception ex) {
-                            return false;
-                        }
+        verify(executionContext, times(1)).setAttribute(
+            eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
+            argThat(
+                (ArgumentMatcher<String>) jwt -> {
+                    try {
+                        SignedJWT signedJWT = SignedJWT.parse(jwt);
+                        JWSHeader jwsHeader = signedJWT.getHeader();
+                        return jwsHeader.getAlgorithm() == JWSAlgorithm.HS256 && jwsHeader.getKeyID().equals("my-kid");
+                    } catch (Exception ex) {
+                        return false;
                     }
-                )
-            );
+                }
+            )
+        );
     }
 
     @Test
@@ -406,21 +399,20 @@ public class GenerateJwtPolicyTest {
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
         verify(policyChain, times(1)).doNext(request, response);
-        verify(executionContext, times(1))
-            .setAttribute(
-                eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
-                argThat(
-                    (ArgumentMatcher<String>) jwt -> {
-                        try {
-                            SignedJWT signedJWT = SignedJWT.parse(jwt);
-                            JWSHeader jwsHeader = signedJWT.getHeader();
-                            return jwsHeader.getAlgorithm() == JWSAlgorithm.HS384 && jwsHeader.getKeyID().equals("my-kid");
-                        } catch (Exception ex) {
-                            return false;
-                        }
+        verify(executionContext, times(1)).setAttribute(
+            eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
+            argThat(
+                (ArgumentMatcher<String>) jwt -> {
+                    try {
+                        SignedJWT signedJWT = SignedJWT.parse(jwt);
+                        JWSHeader jwsHeader = signedJWT.getHeader();
+                        return jwsHeader.getAlgorithm() == JWSAlgorithm.HS384 && jwsHeader.getKeyID().equals("my-kid");
+                    } catch (Exception ex) {
+                        return false;
                     }
-                )
-            );
+                }
+            )
+        );
     }
 
     @Test
@@ -437,21 +429,20 @@ public class GenerateJwtPolicyTest {
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
         verify(policyChain, times(1)).doNext(request, response);
-        verify(executionContext, times(1))
-            .setAttribute(
-                eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
-                argThat(
-                    (ArgumentMatcher<String>) jwt -> {
-                        try {
-                            SignedJWT signedJWT = SignedJWT.parse(jwt);
-                            JWSHeader jwsHeader = signedJWT.getHeader();
-                            return jwsHeader.getAlgorithm() == JWSAlgorithm.HS512 && jwsHeader.getKeyID().equals("my-kid");
-                        } catch (Exception ex) {
-                            return false;
-                        }
+        verify(executionContext, times(1)).setAttribute(
+            eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
+            argThat(
+                (ArgumentMatcher<String>) jwt -> {
+                    try {
+                        SignedJWT signedJWT = SignedJWT.parse(jwt);
+                        JWSHeader jwsHeader = signedJWT.getHeader();
+                        return jwsHeader.getAlgorithm() == JWSAlgorithm.HS512 && jwsHeader.getKeyID().equals("my-kid");
+                    } catch (Exception ex) {
+                        return false;
                     }
-                )
-            );
+                }
+            )
+        );
     }
 
     @Test
@@ -471,25 +462,24 @@ public class GenerateJwtPolicyTest {
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
         verify(policyChain, times(1)).doNext(request, response);
-        verify(executionContext, times(1))
-            .setAttribute(
-                eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
-                argThat(
-                    (ArgumentMatcher<String>) jwt -> {
-                        try {
-                            SignedJWT signedJWT = SignedJWT.parse(jwt);
-                            JWSHeader jwsHeader = signedJWT.getHeader();
-                            return (
-                                jwsHeader.getAlgorithm() == JWSAlgorithm.HS256 &&
-                                jwsHeader.getKeyID().equals("my-kid") &&
-                                signedJWT.getJWTClaimsSet().getJWTID().equals(jti)
-                            );
-                        } catch (Exception ex) {
-                            return false;
-                        }
+        verify(executionContext, times(1)).setAttribute(
+            eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
+            argThat(
+                (ArgumentMatcher<String>) jwt -> {
+                    try {
+                        SignedJWT signedJWT = SignedJWT.parse(jwt);
+                        JWSHeader jwsHeader = signedJWT.getHeader();
+                        return (
+                            jwsHeader.getAlgorithm() == JWSAlgorithm.HS256 &&
+                            jwsHeader.getKeyID().equals("my-kid") &&
+                            signedJWT.getJWTClaimsSet().getJWTID().equals(jti)
+                        );
+                    } catch (Exception ex) {
+                        return false;
                     }
-                )
-            );
+                }
+            )
+        );
     }
 
     @Test
@@ -516,30 +506,29 @@ public class GenerateJwtPolicyTest {
         new GenerateJwtPolicy(configuration).onRequest(request, response, executionContext, policyChain);
 
         verify(policyChain, times(1)).doNext(request, response);
-        verify(executionContext, times(1))
-            .setAttribute(
-                eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
-                argThat(
-                    (ArgumentMatcher<String>) jwt -> {
-                        try {
-                            SignedJWT signedJWT = SignedJWT.parse(jwt);
-                            JWSHeader jwsHeader = signedJWT.getHeader();
+        verify(executionContext, times(1)).setAttribute(
+            eq(GenerateJwtPolicy.CONTEXT_ATTRIBUTE_JWT_GENERATED),
+            argThat(
+                (ArgumentMatcher<String>) jwt -> {
+                    try {
+                        SignedJWT signedJWT = SignedJWT.parse(jwt);
+                        JWSHeader jwsHeader = signedJWT.getHeader();
 
-                            JWTClaimsSet claimsSet = signedJWT.getJWTClaimsSet();
-                            return (
-                                jwsHeader.getAlgorithm() == JWSAlgorithm.HS256 &&
-                                jwsHeader.getKeyID().equals("my-kid") &&
-                                claimsSet.getJWTID().equals(jti) &&
-                                claimsSet.getStringClaim("claim1").equals("claim1-value") &&
-                                claimsSet.getStringClaim("claim2").equals("claim2-value") &&
-                                claimsSet.getClaim("claim3").equals(12345L)
-                            );
-                        } catch (Exception ex) {
-                            return false;
-                        }
+                        JWTClaimsSet claimsSet = signedJWT.getJWTClaimsSet();
+                        return (
+                            jwsHeader.getAlgorithm() == JWSAlgorithm.HS256 &&
+                            jwsHeader.getKeyID().equals("my-kid") &&
+                            claimsSet.getJWTID().equals(jti) &&
+                            claimsSet.getStringClaim("claim1").equals("claim1-value") &&
+                            claimsSet.getStringClaim("claim2").equals("claim2-value") &&
+                            claimsSet.getClaim("claim3").equals(12345L)
+                        );
+                    } catch (Exception ex) {
+                        return false;
                     }
-                )
-            );
+                }
+            )
+        );
     }
 
     @Test
