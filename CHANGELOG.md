@@ -1,3 +1,16 @@
+# [2.0.0](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.8.3...2.0.0) (2026-09-23)
+
+
+* chore(deps)!: move to the gravitee orb 5 and parent 23 ([e2776f3](https://github.com/gravitee-io/gravitee-policy-generate-jwt/commit/e2776f3908ea7295d9fb29f2331e0746cafc544f))
+
+
+### BREAKING CHANGES
+
+* the artifact is now compiled for Java 21, up from Java 11, and
+requires a Java 21 runtime or later.
+
+https://gravitee.atlassian.net/browse/BX-403
+
 ## [1.8.3](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.8.2...1.8.3) (2026-07-07)
 
 
