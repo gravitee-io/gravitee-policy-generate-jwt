@@ -1,236 +1,216 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "additionalProperties": false,
-  "properties" : {
-    "signature": {
-      "title": "Signature",
-      "description": "Define how the JSON Web Token must be signed.",
-      "type" : "string",
-      "default": "RSA_RS256",
-      "enum" : [
-        "RSA_RS256",
-        "HMAC_HS256",
-        "HMAC_HS384",
-        "HMAC_HS512"
-      ],
-      "x-schema-form": {
-        "type": "select",
-        "titleMap": {
-          "RSA_RS256": "RS256 - RSA signature with SHA-256",
-          "HMAC_HS256": "HS256 - HMAC with SHA-256, requires 256+ bit secret",
-          "HMAC_HS384": "HS384 - HMAC with SHA-384, requires 384+ bit secret",
-          "HMAC_HS512": "HS512 - HMAC with SHA-512, requires 512+ bit secret"
-        }
-      },
-      "gioConfig": {
-          "enumLabelMap": {
-            "RSA_RS256": "RS256 - RSA signature with SHA-256",
-            "HMAC_HS256": "HS256 - HMAC with SHA-256, requires 256+ bit secret",
-            "HMAC_HS384": "HS384 - HMAC with SHA-384, requires 384+ bit secret",
-            "HMAC_HS512": "HS512 - HMAC with SHA-512, requires 512+ bit secret"
-          }
-      }
-    },
-    "keyResolver": {
-      "title": "Key resolver",
-      "description": "Define how the private key / secret key must be resolved.",
-      "type" : "string",
-      "default": "INLINE",
-      "enum" : [
-        "INLINE",
-        "PEM",
-        "JKS",
-        "PKCS12"
-      ],
-      "x-schema-form": {
-        "type": "select",
-        "titleMap": {
-          "INLINE": "The content of the private key / secret key is provided inline",
-          "PEM": "The content of the private key is provided by reading a PEM file from filesystem (only for RS algorithms)",
-          "JKS": "The content of the private key is provided by reading a JKS file from filesystem (only for RS algorithms)",
-          "PKCS12": "The content of the private key is provided by reading a PKCS12 file from filesystem (only for RS algorithms)"
-        }
-      },
-      "gioConfig": {
-        "enumLabelMap": {
-          "INLINE": "The content of the private key / secret key is provided inline",
-          "PEM": "The content of the private key is provided by reading a PEM file from filesystem (only for RS algorithms)",
-          "JKS": "The content of the private key is provided by reading a JKS file from filesystem (only for RS algorithms)",
-          "PKCS12": "The content of the private key is provided by reading a PKCS12 file from filesystem (only for RS algorithms)"
-        }
-      }
-    },
-    "alias" : {
-      "type" : "string",
-      "title": "Key alias",
-      "description": "Alias used to access a keystore entry. (only for JKS and PKCS#12)",
-      "gioConfig": {
-        "displayIf": {
-          "$eq": {
-            "value.keyResolver": ["JKS", "PKCS12"]
-          }
-        }
-      }
-    },
-    "storepass" : {
-      "type" : "string",
-      "title": "Store password",
-      "description": "Pass used to access the key store. (only for JKS and PKCS#12)",
-      "gioConfig": {
-        "displayIf": {
-          "$eq": {
-            "value.keyResolver": ["JKS", "PKCS12"]
-          }
-        }
-      }
-    },
-    "keypass" : {
-      "type" : "string",
-      "title": "Key password",
-      "description": "Pass used to access the particular key pair's private key. (only for JKS)",
-      "gioConfig": {
-        "displayIf": {
-          "$eq": {
-            "value.keyResolver": ["JKS"]
-          }
-        }
-      }
-    },
-    "kid" : {
-      "type" : "string",
-      "title": "Key ID",
-      "description": "Specifies the key ID (kid) to include in the JWT header."
-    },
-    "x509CertificateChain": {
-      "title": "Certificate chain",
-      "description": "Whether a certificate chain should be added as an X5C attribute. (only for RS256, JKS and PKCS#12)",
-      "type" : "string",
-      "default": "NONE",
-      "enum" : [
-        "NONE",
-        "X5C"
-      ],
-      "x-schema-form": {
-        "type": "select",
-        "titleMap": {
-          "NONE": "Do not add a certificate chain",
-          "X5C": "Add a certificate chain as an X5C attribute"
-        }
-      },
-      "gioConfig": {
-        "enumLabelMap": {
-          "NONE": "Do not add a certificate chain",
-          "X5C": "Add a certificate chain as an X5C attribute"
-        }
-      }
-    },
-    "id" : {
-      "type" : "string",
-      "title": "JWT ID. Supports EL.",
-      "description": "JWT ID (jti) claim is a unique identifier for the JWT. Defaults to UUID.",
-      "x-schema-form": {
-        "expression-language": true
-      }
-    },
-    "audiences" : {
-      "type" : "array",
-      "title": "Audiences",
-      "description": "Claim identifies the recipients that the JWT is intended for. (Supports EL)",
-      "items" : {
-        "type" : "string"
-      }
-    },
-    "issuer" : {
-      "type" : "string",
-      "title": "Issuer",
-      "description": "Claim that identifies the issuer of the JWT. (Supports EL)",
-      "default": "urn://gravitee-api-gw",
-      "x-schema-form": {
-        "expression-language": true
-      }
-    },
-    "expiresIn" : {
-      "type" : "integer",
-      "title": "Expires in",
-      "description": "Lifespan of the JWT",
-      "default": 30
-    },
-    "expiresInUnit" : {
-      "type" : "string",
-      "title": "Expires in unit",
-      "description": "Lifespan of the JWT in seconds, minutes, hours, or days.",
-      "enum" : [ "SECONDS", "MINUTES", "HOURS", "DAYS" ],
-      "default": "SECONDS"
-    },
-    "subject" : {
-      "type" : "string",
-      "title": "Subject",
-      "description": "Claim identifies or makes a statement about the subject of the JWT. (Supports EL)",
-      "x-schema-form": {
-        "expression-language": true
-      }
-    },
-    "content" : {
-      "type" : "string",
-      "title": "Private key / Secret key / key store path",
-      "description": "Specifies a PEM-encoded private key used to sign the JWT or the secret key used to sign tokens with an HMAC algorithm, or the path to your key store.",
-      "x-schema-form": {
-        "type": "codemirror",
-        "codemirrorOptions": {
-          "placeholder": "Put PEM-encoded private key or the secret key or the path to your key store",
-          "lineWrapping": true,
-          "lineNumbers": true,
-          "allowDropFileTypes": true
-        }
-      },
-      "format": "gio-code-editor"
-    },
-    "secretBase64Encoded": {
-        "type" : "boolean",
-        "title": "Secret base64 encoded",
-        "description": "Whether the secret key is base64 encoded. (only for HMAC algorithms)",
-        "default": false,
-      "gioConfig": {
-        "displayIf": {
-          "$eq": {
-            "value.signature": ["HMAC_HS256", "HMAC_HS384", "HMAC_HS512"]
-          }
-        }
-      }
-    },
-    "customClaims" : {
-      "type" : "array",
-      "title": "Custom claims",
-      "description": "Specify additional claim name/value pair(s) in the payload of the JWT.",
-      "items" : {
-        "type" : "object",
-        "title": "Claim",
-        "properties" : {
-          "name" : {
-            "type" : "string",
-            "title": "Name",
-            "description": "Name of the claim"
-          },
-          "value" : {
-            "type" : "string",
-            "title": "Value",
-            "description": "Value of the claim. Supports EL.",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "signature": {
+            "title": "Signature",
+            "description": "Define how the JSON Web Token must be signed.",
+            "type": "string",
+            "default": "RSA_RS256",
+            "enum": ["RSA_RS256", "HMAC_HS256", "HMAC_HS384", "HMAC_HS512"],
             "x-schema-form": {
-              "expression-language": true
+                "type": "select",
+                "titleMap": {
+                    "RSA_RS256": "RS256 - RSA signature with SHA-256",
+                    "HMAC_HS256": "HS256 - HMAC with SHA-256, requires 256+ bit secret",
+                    "HMAC_HS384": "HS384 - HMAC with SHA-384, requires 384+ bit secret",
+                    "HMAC_HS512": "HS512 - HMAC with SHA-512, requires 512+ bit secret"
+                }
+            },
+            "gioConfig": {
+                "enumLabelMap": {
+                    "RSA_RS256": "RS256 - RSA signature with SHA-256",
+                    "HMAC_HS256": "HS256 - HMAC with SHA-256, requires 256+ bit secret",
+                    "HMAC_HS384": "HS384 - HMAC with SHA-384, requires 384+ bit secret",
+                    "HMAC_HS512": "HS512 - HMAC with SHA-512, requires 512+ bit secret"
+                }
             }
-          }
         },
-        "required": [
-          "name",
-          "value"
-        ]
-      }
-    }
-  },
-  "required": [
-    "signature",
-    "keyResolver",
-    "content"
-  ]
+        "keyResolver": {
+            "title": "Key resolver",
+            "description": "Define how the private key / secret key must be resolved.",
+            "type": "string",
+            "default": "INLINE",
+            "enum": ["INLINE", "PEM", "JKS", "PKCS12"],
+            "x-schema-form": {
+                "type": "select",
+                "titleMap": {
+                    "INLINE": "The content of the private key / secret key is provided inline",
+                    "PEM": "The content of the private key is provided by reading a PEM file from filesystem (only for RS algorithms)",
+                    "JKS": "The content of the private key is provided by reading a JKS file from filesystem (only for RS algorithms)",
+                    "PKCS12": "The content of the private key is provided by reading a PKCS12 file from filesystem (only for RS algorithms)"
+                }
+            },
+            "gioConfig": {
+                "enumLabelMap": {
+                    "INLINE": "The content of the private key / secret key is provided inline",
+                    "PEM": "The content of the private key is provided by reading a PEM file from filesystem (only for RS algorithms)",
+                    "JKS": "The content of the private key is provided by reading a JKS file from filesystem (only for RS algorithms)",
+                    "PKCS12": "The content of the private key is provided by reading a PKCS12 file from filesystem (only for RS algorithms)"
+                }
+            }
+        },
+        "alias": {
+            "type": "string",
+            "title": "Key alias",
+            "description": "Alias used to access a keystore entry. (only for JKS and PKCS#12)",
+            "gioConfig": {
+                "displayIf": {
+                    "$eq": {
+                        "value.keyResolver": ["JKS", "PKCS12"]
+                    }
+                }
+            }
+        },
+        "storepass": {
+            "type": "string",
+            "title": "Store password",
+            "description": "Pass used to access the key store. (only for JKS and PKCS#12)",
+            "gioConfig": {
+                "displayIf": {
+                    "$eq": {
+                        "value.keyResolver": ["JKS", "PKCS12"]
+                    }
+                }
+            }
+        },
+        "keypass": {
+            "type": "string",
+            "title": "Key password",
+            "description": "Pass used to access the particular key pair's private key. (only for JKS)",
+            "gioConfig": {
+                "displayIf": {
+                    "$eq": {
+                        "value.keyResolver": ["JKS"]
+                    }
+                }
+            }
+        },
+        "kid": {
+            "type": "string",
+            "title": "Key ID",
+            "description": "Specifies the key ID (kid) to include in the JWT header."
+        },
+        "x509CertificateChain": {
+            "title": "Certificate chain",
+            "description": "Whether a certificate chain should be added as an X5C attribute. (only for RS256, JKS and PKCS#12)",
+            "type": "string",
+            "default": "NONE",
+            "enum": ["NONE", "X5C"],
+            "x-schema-form": {
+                "type": "select",
+                "titleMap": {
+                    "NONE": "Do not add a certificate chain",
+                    "X5C": "Add a certificate chain as an X5C attribute"
+                }
+            },
+            "gioConfig": {
+                "enumLabelMap": {
+                    "NONE": "Do not add a certificate chain",
+                    "X5C": "Add a certificate chain as an X5C attribute"
+                }
+            }
+        },
+        "id": {
+            "type": "string",
+            "title": "JWT ID. Supports EL.",
+            "description": "JWT ID (jti) claim is a unique identifier for the JWT. Defaults to UUID.",
+            "x-schema-form": {
+                "expression-language": true
+            }
+        },
+        "audiences": {
+            "type": "array",
+            "title": "Audiences",
+            "description": "Claim identifies the recipients that the JWT is intended for. (Supports EL)",
+            "items": {
+                "type": "string"
+            }
+        },
+        "issuer": {
+            "type": "string",
+            "title": "Issuer",
+            "description": "Claim that identifies the issuer of the JWT. (Supports EL)",
+            "default": "urn://gravitee-api-gw",
+            "x-schema-form": {
+                "expression-language": true
+            }
+        },
+        "expiresIn": {
+            "type": "integer",
+            "title": "Expires in",
+            "description": "Lifespan of the JWT",
+            "default": 30
+        },
+        "expiresInUnit": {
+            "type": "string",
+            "title": "Expires in unit",
+            "description": "Lifespan of the JWT in seconds, minutes, hours, or days.",
+            "enum": ["SECONDS", "MINUTES", "HOURS", "DAYS"],
+            "default": "SECONDS"
+        },
+        "subject": {
+            "type": "string",
+            "title": "Subject",
+            "description": "Claim identifies or makes a statement about the subject of the JWT. (Supports EL)",
+            "x-schema-form": {
+                "expression-language": true
+            }
+        },
+        "content": {
+            "type": "string",
+            "title": "Private key / Secret key / key store path",
+            "description": "Specifies a PEM-encoded private key used to sign the JWT or the secret key used to sign tokens with an HMAC algorithm, or the path to your key store.",
+            "x-schema-form": {
+                "type": "codemirror",
+                "codemirrorOptions": {
+                    "placeholder": "Put PEM-encoded private key or the secret key or the path to your key store",
+                    "lineWrapping": true,
+                    "lineNumbers": true,
+                    "allowDropFileTypes": true
+                }
+            },
+            "format": "gio-code-editor"
+        },
+        "secretBase64Encoded": {
+            "type": "boolean",
+            "title": "Secret base64 encoded",
+            "description": "Whether the secret key is base64 encoded. (only for HMAC algorithms)",
+            "default": false,
+            "gioConfig": {
+                "displayIf": {
+                    "$eq": {
+                        "value.signature": ["HMAC_HS256", "HMAC_HS384", "HMAC_HS512"]
+                    }
+                }
+            }
+        },
+        "customClaims": {
+            "type": "array",
+            "title": "Custom claims",
+            "description": "Specify additional claim name/value pair(s) in the payload of the JWT.",
+            "items": {
+                "type": "object",
+                "title": "Claim",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "description": "Name of the claim"
+                    },
+                    "value": {
+                        "type": "string",
+                        "title": "Value",
+                        "description": "Value of the claim. Supports EL.",
+                        "x-schema-form": {
+                            "expression-language": true
+                        }
+                    }
+                },
+                "required": ["name", "value"]
+            }
+        }
+    },
+    "required": ["signature", "keyResolver", "content"]
 }
