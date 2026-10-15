@@ -1,3 +1,16 @@
+# [2.1.0](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/2.0.0...2.1.0) (2026-10-15)
+
+
+### Bug Fixes
+
+* capitalize Key ID in README configuration table ([44cdbac](https://github.com/gravitee-io/gravitee-policy-generate-jwt/commit/44cdbacf1072813ce82a2e4efaab99d16542dd54))
+
+
+### Features
+
+* add x5t certificate thumbprint support ([63b9d6e](https://github.com/gravitee-io/gravitee-policy-generate-jwt/commit/63b9d6ee51c2c4d6c7153b3287e072c3cdb13a09))
+* add x5t#S256 certificate thumbprint support ([6548f43](https://github.com/gravitee-io/gravitee-policy-generate-jwt/commit/6548f43401d9a469f0817984e8c81258a8f2adc5)), closes [x5t#S256](https://github.com/x5t/issues/S256) [x5t#S256](https://github.com/x5t/issues/S256)
+
 # [2.0.0](https://github.com/gravitee-io/gravitee-policy-generate-jwt/compare/1.8.3...2.0.0) (2026-09-23)
 
 
